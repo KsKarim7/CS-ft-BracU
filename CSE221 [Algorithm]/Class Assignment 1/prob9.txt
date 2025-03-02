@@ -1,0 +1,61 @@
+As a Progressive Rock Music fan, I'd like to use the Heap Sort algorithm to order the tracks by their Youtube views in descending order (highest views first). This algorithm is suitable for this task because it's efficient, stable, and can handle a large number of elements.
+
+Here's how the Heap Sort algorithm works:
+
+1) Build a max heap: We start by building a max heap from the given table of tracks and their Youtube views. A max heap is a complete binary tree where each parent node is greater than or equal to its child nodes. In this case, the parent node represents the track with the highest views, and its child nodes represent the tracks with lower views.
+2) Heapify: We heapify the max heap by recursively swapping the largest child node with its parent node until the heap property is satisfied.
+3)Extract the maximum element: We extract the maximum element (the track with the highest views) from the heap and place it at the end of the sorted list.
+4) Repeat steps 2-3: We repeat steps 2-3 until the heap is empty, which means all tracks have been sorted in descending order of their Youtube views.
+Here's the step-by-step process:
+
+Initial table: 
+track:          Views
+Harridan        15
+Of The New Day  8
+Rats Return     11
+Dignity        112
+Herd Culling   33
+Walk the Plank  39
+Chimera's Wreck 88
+Populati on Three 41
+
+Build max heap:
+       112 (Dignity)
+     /         \
+   88 (Chimera's Wreck)  41 (Populati on Three)
+  /  \         /  \
+39 (Walk the Plank) 33 (Herd Culling) 15 (Harridan) 11 (Rats Return)
+  |         |
+  8 (Of The New Day)
+
+
+Heapify and extract maximum element:
+1. Extract 112 (Dignity)
+   88 (Chimera's Wreck)
+     /         \
+   41 (Populati on Three) 39 (Walk the Plank)
+  /  \         /  \
+33 (Herd Culling) 15 (Harridan) 11 (Rats Return)
+  |         |
+  8 (Of The New Day)
+
+2. Extract 88 (Chimera's Wreck)
+   41 (Populati on Three)
+     /         \
+   39 (Walk the Plank) 33 (Herd Culling)
+  /  \         /  \
+15 (Harridan) 11 (Rats Return)
+  |         |
+  8 (Of The New Day)
+
+... (repeat steps 2-3 until the heap is empty)
+
+Sorted list:
+1. Dignity (112)
+2. Chimera's Wreck (88)
+3. Populati on Three (41)
+4. Walk the Plank (39)
+5. Herd Culling (33)
+6. Harridan (15)
+7. Rats Return (11)
+8. Of The New Day (8)
