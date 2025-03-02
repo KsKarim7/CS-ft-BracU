@@ -1,0 +1,65 @@
+a) Graph Representation and Adjacency Matrix
+
+Rome -- Milan -- Florence -- Venice
+|    |    |    |    |
+|    |    Bologna -- Naples -- Genoa -- Turin
+|    |    |    |    |
+Palermo -- Catania -- Syracuse
+Each node represents a city, and the edges represent connections between them.
+
+adjacency list representation of the graph:
+vector<vector<string>> adjList = {
+    {"Milan", "Venice", "Florence"},  // Rome
+    {"Rome", "Florence", "Bologna", "Venice"},  // Milan
+    {"Milan", "Naples", "Rome", "Bologna", "Venice"},  // Florence
+    {"Rome", "Milan", "Florence"},  // Venice
+    {"Florence", "Bologna", "Genoa"},  // Naples
+    {"Genoa"},  // Turin
+    {"Naples", "Genoa", "Milan", "Florence"},  // Bologna
+    {"Turin", "Bologna", "Naples"},  // Genoa
+    {"Catania", "Syracuse"},  // Palermo
+    {"Palermo", "Syracuse"},  // Catania
+    {"Catania", "Palermo"}  // Syracuse
+};
+
+And here is the adjacency matrix representation of the graph:
+int adjMatrix[11][11] = {
+    {0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0},  // Rome
+    {1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0},  // Milan
+    {0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0},  // Florence
+    {1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},  // Venice
+    {0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0},  // Naples
+    {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},  // Turin
+    {0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0},  // Bologna
+    {0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0},  // Genoa
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0},  // Palermo
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1},  // Catania
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1}  // Syracuse
+};
+
+b) Suitable Graph Traversal Algorithm
+
+The suitable graph traversal algorithm for solving this problem is Breadth-First Search (BFS). The idea is to traverse the graph level by level, starting from the affected city (Rome).
+
+c) Simulating the BFS Algorithm
+
+the simulation of the BFS algorithm to find the time steps needed for each non-affected city to be affected:
+Time Step 0: Rome (affected)
+Time Step 1: Milan, Venice, Florence (affected)
+Time Step 2: Bologna, Naples (affected)
+Time Step 3: Genoa, Turin (affected)
+Time Step 4: Palermo, Catania, Syracuse (affected)
+
+The smallest vertex in alphabetical order is chosen when there is a choice.
+
+implementation of the BFS algorithm:
+#include <iostream>
+#include <vector>
+#include <queue>
+
+using namespace std;
+
+vector<vector<string>> adjList = {
+    {"Milan", "Venice", "Florence"},  // Rome
+    {"Rome", "Florence", "Bologna", "Venice"},  // Milan
+    {"Milan", "Naples", "Rome", "

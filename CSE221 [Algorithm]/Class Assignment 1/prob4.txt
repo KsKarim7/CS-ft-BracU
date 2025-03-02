@@ -1,0 +1,66 @@
+// I'd be happy to help you calculate the time complexity of each recurrence relation.
+
+// A. T(n) = 2T(n/2) + 1/n
+
+// To solve this recurrence relation, we can use the Master Theorem. However, the term 1/n is not in the standard form, so we'll need to modify it.
+
+// Let's assume 1/n is equivalent to c (a constant) for large values of n. Then, we can rewrite the recurrence relation as:
+
+// T(n) = 2T(n/2) + c
+
+// Now, we can apply the Master Theorem:
+
+// a = 2 (number of recursive calls)
+// b = 2 (factor by which n decreases)
+// f(n) = c (work done outside recursive calls)
+// Since f(n) = O(1), we can apply the Master Theorem's first case:
+
+// T(n) = Θ(n^log₂(a)) = Θ(n^log₂(2)) = Θ(n)
+
+// So, the time complexity is O(n).
+
+// B. T(n) = 2T(n/3) + n
+
+// This recurrence relation is a classic example of a divide-and-conquer algorithm. We can use the Master Theorem again:
+
+// a = 2 (number of recursive calls)
+// b = 3 (factor by which n decreases)
+// f(n) = n (work done outside recursive calls)
+// Since f(n) = O(n), we can apply the Master Theorem's second case:
+
+// T(n) = Θ(n^log₃(a)) = Θ(n^log₃(2)) = Θ(n^0.63)
+
+// So, the time complexity is O(n^0.63).
+
+// C. T(n) = T(n/2) + T(n/5) + n
+
+// This recurrence relation is a bit more complex, but we can still solve it using the Master Theorem. Let's analyze the two recursive calls:
+
+// T(n/2) has a factor of b = 2
+// T(n/5) has a factor of b = 5
+// We can combine these factors using the Master Theorem's third case:
+
+// a = 1 (number of recursive calls for T(n/2))
+// b = 2 (factor by which n decreases for T(n/2))
+// c = 1 (number of recursive calls for T(n/5))
+// d = 5 (factor by which n decreases for T(n/5))
+// f(n) = n (work done outside recursive calls)
+// Since f(n) = O(n), we can apply the Master Theorem's third case:
+
+// T(n) = Θ(n^log₂(a) + n^log₅(c)) = Θ(n^log₂(1) + n^log₅(1)) = Θ(n)
+
+// So, the time complexity is O(n).
+
+// D. T(n) = 2T(n/4) + n
+
+// This recurrence relation is similar to the previous ones. We can use the Master Theorem again:
+
+// a = 2 (number of recursive calls)
+// b = 4 (factor by which n decreases)
+// f(n) = n (work done outside recursive calls)
+// Since f(n) = O(n), we can apply the Master Theorem's second case:
+
+// T(n) = Θ(n^log₄(a)) = Θ(n^log₄(2)) = Θ(n^0.5)
+
+// So, the time complexity is O(n^0.5).
+
