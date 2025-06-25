@@ -1,0 +1,26 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+void solve()
+{
+    int a, b;
+    cin >> a >> b;
+    if ((a + b) & 1)
+    {
+        cout << "Alice" << endl;
+    }
+    else
+    {
+        cout << "Bob" << endl;
+    }
+}
+
+int main()
+{
+    int t;
+    cin >> t;
+    while (t--)
+        solve();
+
+    return 0;
+}
