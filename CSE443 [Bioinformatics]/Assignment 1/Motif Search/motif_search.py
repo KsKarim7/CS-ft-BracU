@@ -1,6 +1,3 @@
-
-""" Implement RandomizedMotifSearch """
-
 import numpy as np
 import sys
 
@@ -87,11 +84,12 @@ def read_input():
     k, t = map(int, lines[0].split())
     dna = lines[1:]
     return k, t, dna
-# === Main Runner ===
+
+
 if __name__ == "__main__":
     ITER_NUM = 1000
     k, t, strings = read_input()
-    # k, t, strings = read_data("rosalind_ba2f.txt")
+
     best_motifs = rand_motif_search(strings, k, t)
 
     for _ in range(ITER_NUM - 1):
