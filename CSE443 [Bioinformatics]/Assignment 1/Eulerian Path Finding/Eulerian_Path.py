@@ -24,7 +24,7 @@ def find_start_node(graph):
     for node in set(list(out_deg.keys()) + list(in_deg.keys())):
         if out_deg[node] - in_deg[node] == 1:
             return node
-    return next(iter(graph))  # fallback to any node with outgoing edges
+    return next(iter(graph))  
 
 def find_eulerian_path(graph):
     graph = {u: deque(v) for u, v in graph.items()}
@@ -44,10 +44,9 @@ def find_eulerian_path(graph):
 
     return path[::-1]
 
-# Update this path to the file location if needed
 input_file = 'rosalind_ba3g (1).txt'
 graph = parse_graph_from_file(input_file)
 eulerian_path = find_eulerian_path(graph)
 
-# Output the result
+
 print("->".join(map(str, eulerian_path)))
