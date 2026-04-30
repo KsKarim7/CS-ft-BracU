@@ -1,0 +1,5373 @@
+Directory structure:
+└── hulianyuyy-deep_correlated_prompting/
+    ├── README.md
+    ├── DATA.md
+    ├── make_arrow.py
+    ├── requirements.txt
+    ├── run.py
+    ├── clip/
+    │   ├── __init__.py
+    │   ├── config.py
+    │   ├── Costom_task_guideline
+    │   ├── datamodules/
+    │   │   ├── __init__.py
+    │   │   ├── datamodule_base.py
+    │   │   ├── food101_datamodule.py
+    │   │   ├── hatememes_datamodule.py
+    │   │   ├── mmimdb_datamodule.py
+    │   │   └── multitask_datamodule.py
+    │   ├── datasets/
+    │   │   ├── __init__.py
+    │   │   ├── base_dataset.py
+    │   │   ├── food101_dataset.py
+    │   │   ├── hatememes_dataset.py
+    │   │   └── mmimdb_dataset.py
+    │   ├── gadgets/
+    │   │   ├── __init__.py
+    │   │   └── my_metrics.py
+    │   ├── modules/
+    │   │   ├── __init__.py
+    │   │   ├── clip.py
+    │   │   ├── clip_missing_aware_prompt_module.py
+    │   │   ├── clip_utils.py
+    │   │   ├── dist_utils.py
+    │   │   ├── heads.py
+    │   │   ├── objectives.py
+    │   │   ├── simple_tokenizer.py
+    │   │   └── vision_transformer_prompts.py
+    │   ├── transforms/
+    │   │   ├── __init__.py
+    │   │   ├── pixelbert.py
+    │   │   ├── randaug.py
+    │   │   └── utils.py
+    │   └── utils/
+    │       ├── glossary.py
+    │       ├── write_food101.py
+    │       ├── write_hatememes.py
+    │       └── write_mmimdb.py
+    └── datasets/
+        └── Food101/
+            └── class_idx.json
+
+================================================
+FILE: README.md
+================================================
+# Deep Correlated Prompting for Visual Recognition with Missing Modalities (NeurIPS 2024)
+Official PyTorch implementaton of NeurIPS 2024 paper "[Deep Correlated Prompting for Visual Recognition with Missing Modalities](https://arxiv.org/abs/2410.06558)".  
+
+## Introduction
+In this paper, we tackle two main challenges in multimodal learning, including (1) any modality may be missing in any learning phase (e.g., training, testing or both), and (2) how to efficiently adapt large-scale multimodal transformers to fit missing-modality cases under constrained computing resources. Previous methods ([MMP](https://arxiv.org/abs/2303.03369)) have considerably explored this issue. However, it only assigns independent prompts to the input and intermediate features, which (1) fails to consider the relationships between prompts of different layers, and (2) lacks the correlations between prompts and input features, and (3) overlooks the complementarity of multimodal inputs. To better adapt the pretrained multimodal model for missing-modality scenarios, we propose to design three types of missing-aware prompts by capturing the relationships between prompts and inputs. Compared to MMP, our method could achieve much better performance across a wide range of bekchmarks. Specifically, our modality-missing-aware prompts can be plugged into multimodal transformers to handle general missing-modality cases, while only requiring less than 4% learnable parameters compared to training the entire model. Our model trained on one missing-modality case (missing-all) can show superior performance over all missing-modality cases (e.g., missing-all, missing-image and missing-text).
+
+<div align="center">
+  <img src="fig/figure_comparison.jpg"/>
+</div>
+
+## Performance
+By equipping each proposed prompting design, our method obtains notable performance gain. Taking the results on the MMIMDb dataset as an example, our method achieves superior performance over all missing-modality cases (e.g., missing-all, missing-image and missing-text).
+
+<div align="center">
+  <img src="fig/figure3.jpg"/>
+</div>
+
+## Usage
+### Enviroment
+#### Prerequisites
+```
+pip install -r requirements.txt
+```
+
+### Prepare Dataset
+We use three vision and language datasets: [MM-IMDb](https://github.com/johnarevalo/gmu-mmimdb), [UPMC Food-101](https://visiir.isir.upmc.fr/explore), and [Hateful Memes](https://ai.facebook.com/blog/hateful-memes-challenge-and-data-set/). Please download the datasets by yourself. We use `pyarrow` to serialize the datasets, the conversion codes are located in `vilt/utils/wirte_*.py`. Please see [`DATA.md`](./DATA.md) to organize the datasets, otherwise you may need to revise the `write_*.py` files to meet your dataset path and files. Run the following script to create the pyarrow binary file:
+```
+python make_arrow.py --dataset [DATASET] --root [YOUR_DATASET_ROOT]
+```
+
+### Implementation
+The key implementations for our proposed method are located in the [clip_missing_aware_prompt_module.py](./clip/modules/clip_missing_aware_prompt_module.py) and [vision_transformer_prompts.py](./clip/modules/vision_transformer_prompts.py), which defines the prompting approaches and base modules, respectively.
+
+### Train
+```
+python run.py with data_root=<ARROW_ROOT> \
+        num_gpus=<NUM_GPUS> \
+        num_nodes=<NUM_NODES> \
+        per_gpu_batchsize=<BS_FITS_YOUR_GPU> \
+        <task_finetune_mmimdb or task_finetune_food101 or task_finetune_hatememes> \
+        exp_name=<EXP_NAME>
+```
+Example command:
+```
+python run.py with data_root=/path_to_mmimdb num_gpus=1 num_nodes=1 per_gpu_batchsize=4 task_finetune_mmimdb exp_name=exp_base
+```
+### Evaluation
+```
+python run.py with data_root=<ARROW_ROOT> \
+        num_gpus=<NUM_GPUS> \
+        num_nodes=<NUM_NODES> \
+        per_gpu_batchsize=<BS_FITS_YOUR_GPU> \
+        <task_finetune_mmimdb or task_finetune_food101 or task_finetune_hatememes> \
+        load_path=<MODEL_PATH> \
+        exp_name=<EXP_NAME> \
+        prompt_type=<PROMPT_TYPE> \
+        test_ratio=<TEST_RATIO> \
+        test_type=<TEST_TYPE> \
+        test_only=True     
+```
+Example command:
+```
+python run.py with data_root=/path_to_mmimd num_gpus=1 num_nodes=1 per_gpu_batchsize=4 task_finetune_mmimdb load_path=/path_to_your_pretrained.ckpt test_only=True test_ratio=0.7 test_type=both exp_name=exp_test
+```
+The `/path_to_your_pretrained.ckpt` could be the `.pt` file with prefix `epoch-` in the output folder.
+## Citation
+If you find this work useful for your research, please cite:
+```Bibtex
+@inproceedings{hu2024deep,
+  title={Deep Correlated Prompting for Visual Recognition with Missing Modalities},
+  author={Lianyu Hu,Tongkai Shi, Wei Feng, Fanhua Shang, Liang Wan},
+  booktitle={Thirty-Eighth Annual Conference on Neural Information Processing Systems},
+  year={2024},
+}
+```
+
+## Acknowledgements
+This code is based on [ViLT](https://github.com/dandelin/ViLT.git), [CLIP](https://github.com/openai/CLIP) and [MMP](https://github.com/yilunlee/missing_aware_prompts). Many thanks for their contributions. 
+
+
+
+================================================
+FILE: DATA.md
+================================================
+
+# Data directory structure:
+Please organize the datasets as follows, otherwise you may need to revise the `write_*.py` files to meet your dataset path and files.
+
+## MM-IMDb
+[MM-IMDb](https://github.com/johnarevalo/gmu-mmimdb) [(archive.org mirror)](https://archive.org/download/mmimdb)
+
+    root
+    ├── images            
+    │   ├── 00000005.jpeg 
+    │   ├── 00000008.jpeg   
+    │   └── ...        
+    ├── labels          
+    │   ├── 00000005.json 
+    │   ├── 00000008.json   
+    │   └── ...        
+    └── split.json 
+
+
+## Food101
+[UPMC Food-101](https://visiir.isir.upmc.fr/explore) [(Kaggle)](https://www.kaggle.com/datasets/gianmarco96/upmcfood101?select=texts)
+
+    root
+    ├── images            
+    │   ├── train                
+    │   │   ├── apple_pie
+    │   │   │   ├── apple_pie_0.jpg        
+    │   │   │   └── ...         
+    │   │   ├── baby_back_ribs  
+    │   │   │   ├── baby_back_ribs_0.jpg        
+    │   │   │   └── ...    
+    │   │   └── ...
+    │   ├── test                
+    │   │   ├── apple_pie
+    │   │   │   ├── apple_pie_0.jpg        
+    │   │   │   └── ...         
+    │   │   ├── baby_back_ribs  
+    │   │   │   ├── baby_back_ribs_0.jpg        
+    │   │   │   └── ...    
+    │   │   └── ...
+    ├── texts          
+    │   ├── train_titles.csv            
+    │   └── test_titles.csv         
+    ├── class_idx.json         
+    ├── text.json         
+    └── split.json
+
+
+##  Hateful Memes
+[Hateful Memes](https://ai.facebook.com/blog/hateful-memes-challenge-and-data-set/)
+
+**Update:** The datasets we used are from [(Kaggle)](https://www.kaggle.com/datasets/parthplc/facebook-hateful-meme-dataset), however, the test.jsonl here does not contain the label information. To make the label available for the evaluation, we download the test_seen.jsonl from [(Kaggle2)](https://www.kaggle.com/datasets/williamberrios/hateful-memes), which has the same test set as the previous one with the label information. You can directly download the test_seen.jsonl file here and use it (of course you should rename it as test.jsonl or revise the write_*.py file).
+
+
+    root
+    ├── img           
+    │   ├── xxxxx.png 
+    │   ├── xxxxx.png   
+    │   └── ...        
+    ├── train.jsonl          
+    ├── dev.jsonl           
+    └── test.jsonl 
+
+
+
+================================================
+FILE: make_arrow.py
+================================================
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset', default='mmimdb', type=str, help='Datasets.')
+parser.add_argument('--root', default='./datasets', type=str, help='Root of datasets')
+parser.add_argument('--target', default='./datasets', type=str, help='Root of datasets')
+args = parser.parse_args()
+
+if args.dataset.lower() == 'mmimdb':
+    from clip.utils.write_mmimdb import make_arrow
+    make_arrow(args.root, args.target)
+    
+elif args.dataset.lower() == 'food101':
+    from clip.utils.write_food101 import make_arrow
+    make_arrow(args.root, args.target)
+    
+elif args.dataset.lower() == 'hateful_memes':
+    from clip.utils.write_hatememes import make_arrow
+    make_arrow(args.root, args.target)
+
+
+================================================
+FILE: requirements.txt
+================================================
+einops==0.3.0
+ftfy==6.2.3
+jsonlines==3.1.0
+numpy==1.19.5
+pandas==1.1.5
+Pillow==9.3.0
+Pillow==10.4.0
+pyarrow==2.0.0
+pytorch_lightning==1.1.4
+regex==2023.10.3
+sacred==0.8.2
+setuptools==65.6.3
+timm==0.9.8.dev0
+torch==1.8.0+cu111
+torchmetrics==0.9.3
+torchvision==0.9.0
+tqdm==4.56.0
+transformers==4.2.1
+
+
+
+================================================
+FILE: run.py
+================================================
+import os
+import copy
+from torchmetrics.functional import f1_score
+import pytorch_lightning as pl
+
+from clip.config import ex
+from clip.modules import CLIPransformerSS
+from clip.datamodules.multitask_datamodule import MTDataModule
+import shutil
+
+@ex.automain
+def main(_config):
+    _config = copy.deepcopy(_config)
+    pl.seed_everything(_config["seed"])
+
+    dm = MTDataModule(_config, dist=True)
+
+    model = CLIPransformerSS(_config)
+    exp_name = f'{_config["exp_name"]}'
+
+    os.makedirs(_config["log_dir"], exist_ok=True)
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        save_top_k=1,
+        verbose=True,
+        monitor="val/the_metric",
+        mode="max",
+        save_last=True,
+    )
+    #logger = pl.loggers.TensorBoardLogger(
+    #    _config["log_dir"],
+    #    name=f'{exp_name}_seed{_config["seed"]}}',
+    #)
+    logger = pl.loggers.CSVLogger(
+        _config["log_dir"],
+        name=f'{exp_name}_seed{_config["seed"]}',
+    )
+    target_dir = './result_model_files' + '/' + _config["log_dir"] +'/' + f'{exp_name}_seed{_config["seed"]}' + '/'
+    if os.path.exists(target_dir):
+        shutil.rmtree(target_dir)
+        os.makedirs(target_dir)
+    else:
+        os.makedirs(target_dir)
+    shutil.copy2('./clip/modules/clip_missing_aware_prompt_module.py', target_dir)
+    shutil.copy2('./clip/modules/vision_transformer_prompts.py', target_dir)
+    shutil.copy2('./clip/config.py', target_dir)
+
+    lr_callback = pl.callbacks.LearningRateMonitor(logging_interval="step")
+    callbacks = [checkpoint_callback, lr_callback]
+#     from pytorch_lightning.profiler import SimpleProfiler
+#     profiler = SimpleProfiler()
+    
+    num_gpus = (
+        _config["num_gpus"]
+        if isinstance(_config["num_gpus"], int)
+        else len(_config["num_gpus"])
+    )
+
+    grad_steps = _config["batch_size"] // (
+        _config["per_gpu_batchsize"] * num_gpus * _config["num_nodes"]
+    )
+    print(_config["batch_size"], _config["per_gpu_batchsize"], num_gpus, _config["num_nodes"])
+    max_steps = _config["max_steps"] if _config["max_steps"] is not None else None
+
+    trainer = pl.Trainer(
+        gpus=_config["num_gpus"],
+        num_nodes=_config["num_nodes"],
+        precision=_config["precision"],
+        accelerator="ddp",
+        benchmark=True,
+        deterministic=True,
+        max_epochs=_config["max_epoch"] if max_steps is None else 1000,
+        max_steps=max_steps,
+        callbacks=callbacks,
+        logger=logger,
+        prepare_data_per_node=False,
+        replace_sampler_ddp=False,
+        accumulate_grad_batches=grad_steps,
+        log_every_n_steps=10,
+        flush_logs_every_n_steps=10,
+        resume_from_checkpoint=_config["resume_from"],
+        weights_summary="top",
+        fast_dev_run=_config["fast_dev_run"],
+        val_check_interval=_config["val_check_interval"],
+#         profiler=profiler,
+    )
+
+    if not _config["test_only"]:
+        trainer.fit(model, datamodule=dm)
+    else:
+        trainer.test(model, datamodule=dm)
+
+
+
+================================================
+FILE: clip/__init__.py
+================================================
+[Empty file]
+
+
+================================================
+FILE: clip/config.py
+================================================
+from sacred import Experiment
+
+ex = Experiment("CLIP")
+
+
+def _loss_names(d):
+    ret = {
+        "itm": 0,
+        "mlm": 0,
+        "mpp": 0,
+        "mppd": 0,
+        "vqa": 0,
+        "nlvr2": 0,
+        "irtr": 0,
+        "mmimdb": 0,
+        "hatememes": 0,
+        "food101": 0,        
+    }
+    ret.update(d)
+    return ret
+
+
+@ex.config
+def config():
+    exp_name = "exp"
+    seed = 0
+    datasets = ["coco", "vg", "sbu", "gcc"]
+    loss_names = _loss_names({"itm": 1, "mlm": 1})
+    batch_size = 4096  # this is a desired batch size; pl trainer will accumulate gradients when per step batch is smaller.
+
+    # eval config (for bash execution)
+    test_ratio = None
+    test_type = None
+    test_exp_name = None
+    
+    # fix backbone model (CLIP) weights
+    fix_model = True
+    
+    # missing modality config
+    missing_ratio = {'train': 0.7, 'val': 0.7, 'test': 0.7}
+    missing_type = {'train': 'both', 'val': 'both', 'test': 'both'} # ['text', 'image', 'both'] in VL taskss
+    both_ratio = 0.5   # missing both ratio
+    missing_table_root = './datasets/missing_tables/'
+    simulate_missing = False
+    
+    # missing_aware_prompts config
+    prompt_length = 36
+    prompt_depth = 6
+        
+    # Image setting
+    train_transform_keys = ["CLIP_transform"]
+    val_transform_keys = ["CLIP_transform"]
+    image_size = 224
+    draw_false_image = 1
+    image_only = False
+
+    # Text Setting
+    max_text_len = 40
+    vocab_size = 30522
+    whole_word_masking = False
+    mlm_prob = 0.15
+    draw_false_text = 0
+
+    # Transformer Setting
+    vit = "ViT-B/16"
+
+    # Optimizer Setting
+    optim_type = "adamw"
+    learning_rate = 1e-4
+    weight_decay = 0.01
+    decay_power = 1
+    max_epoch = 100
+    max_steps = 25000
+    warmup_steps = 2500
+    end_lr = 0
+    lr_mult = 1  # multiply lr for downstream heads
+
+    # Downstream Setting
+    get_recall_metric = False
+    mmimdb_class_num = 23
+    hatememes_class_num = 2
+    food101_class_num = 101    
+
+    # PL Trainer Setting
+    resume_from = None
+    fast_dev_run = False
+    val_check_interval = 1.0
+    test_only = False
+    finetune_first = False
+
+    # below params varies with the environment
+    data_root = ""
+    log_dir = "result"
+    per_gpu_batchsize = 0  # you should define this manually with per_gpu_batch_size=#
+    num_gpus = 1
+    num_nodes = 1
+    load_path = ""
+    num_workers = 8
+    precision = 16
+
+
+# Named configs for "environment" which define gpus and nodes, and paths
+@ex.named_config
+def env_dandelin():
+    data_root = "/data2/dsets/dataset"
+    log_dir = "/data2/clip/result"
+    num_gpus = 8
+    num_nodes = 1
+
+
+# Named configs for "task" which define datasets, loss_names and desired batch_size, warmup_steps, epochs, and exp_name
+@ex.named_config
+def task_mlm_itm():
+    exp_name = "mlm_itm"
+    datasets = ["coco", "vg", "sbu", "gcc"]
+    loss_names = _loss_names({"itm": 1, "mlm": 1})
+    batch_size = 4096
+    max_epoch = 10
+    max_image_len = 200
+
+
+@ex.named_config
+def task_mlm_itm_randaug():
+    exp_name = "mlm_itm_randaug"
+    datasets = ["coco", "vg", "sbu", "gcc"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"itm": 1, "mlm": 1})
+    batch_size = 4096
+    max_epoch = 10
+    max_image_len = 200
+
+
+@ex.named_config
+def task_mlm_itm_mpp():
+    exp_name = "mlm_itm_mpp"
+    datasets = ["coco", "vg", "sbu", "gcc"]
+    loss_names = _loss_names({"itm": 1, "mlm": 1, "mpp": 1})
+    batch_size = 4096
+    max_epoch = 10
+    max_image_len = 200
+
+
+@ex.named_config
+def task_finetune_nlvr2():
+    exp_name = "finetune_nlvr2"
+    datasets = ["nlvr2"]
+    loss_names = _loss_names({"nlvr2": 1})
+    batch_size = 128
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-4
+
+
+@ex.named_config
+def task_finetune_nlvr2_randaug():
+    exp_name = "finetune_nlvr2_randaug"
+    datasets = ["nlvr2"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"nlvr2": 1})
+    batch_size = 128
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-4
+
+
+@ex.named_config
+def task_finetune_vqa():
+    exp_name = "finetune_vqa"
+    datasets = ["vqa"]
+    loss_names = _loss_names({"vqa": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-4
+    val_check_interval = 0.1
+    lr_mult = 10
+
+
+@ex.named_config
+def task_finetune_vqa_randaug():
+    exp_name = "finetune_vqa_randaug"
+    datasets = ["vqa"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"vqa": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-4
+    val_check_interval = 0.1
+    lr_mult = 10
+
+@ex.named_config
+def task_finetune_hatememes():
+    exp_name = "finetune_hatememes"
+    datasets = ["Hatefull_Memes"]
+    loss_names = _loss_names({"hatememes": 1})
+    batch_size = 256
+    max_epoch = 20
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-2 
+    val_check_interval = 0.11
+    weight_decay = 2e-2
+#     optim_type = "adam"
+    max_text_len = 128 
+    
+@ex.named_config
+def task_finetune_food101():
+    exp_name = "finetune_food101"
+    datasets = ["Food101"]
+    loss_names = _loss_names({"food101": 1})
+    batch_size = 256
+    max_epoch = 20
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-2
+    val_check_interval = 0.2
+    weight_decay = 2e-2
+#     optim_type = "adam"
+    max_text_len = 512     
+    
+@ex.named_config
+def task_finetune_mmimdb():
+    exp_name = "finetune_mmimdb"
+    datasets = ["mmimdb"]
+    loss_names = _loss_names({"mmimdb": 1})
+#     loss_names = _loss_names({"mmimdb": 1, "prompt": -0.5})
+    batch_size = 256
+    max_epoch = 20
+    max_steps = None
+    warmup_steps = 0.1
+    draw_false_image = 0
+    learning_rate = 1e-2
+    val_check_interval = 0.2
+    weight_decay = 2e-2
+#     optim_type = "adam"
+    max_text_len = 1024
+
+@ex.named_config
+def task_finetune_irtr_coco():
+    exp_name = "finetune_irtr_coco"
+    datasets = ["coco"]
+    loss_names = _loss_names({"itm": 0.5, "irtr": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    get_recall_metric = True
+    draw_false_text = 15
+    learning_rate = 1e-4
+
+
+@ex.named_config
+def task_finetune_irtr_coco_randaug():
+    exp_name = "finetune_irtr_coco_randaug"
+    datasets = ["coco"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"itm": 0.5, "irtr": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    get_recall_metric = True
+    draw_false_text = 15
+    learning_rate = 1e-4
+
+
+@ex.named_config
+def task_finetune_irtr_f30k():
+    exp_name = "finetune_irtr_f30k"
+    datasets = ["f30k"]
+    loss_names = _loss_names({"itm": 0.5, "irtr": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    get_recall_metric = True
+    draw_false_text = 15
+    learning_rate = 1e-4
+
+
+@ex.named_config
+def task_finetune_irtr_f30k_randaug():
+    exp_name = "finetune_irtr_f30k_randaug"
+    datasets = ["f30k"]
+    train_transform_keys = ["pixelbert_randaug"]
+    loss_names = _loss_names({"itm": 0.5, "irtr": 1})
+    batch_size = 256
+    max_epoch = 10
+    max_steps = None
+    warmup_steps = 0.1
+    get_recall_metric = True
+    draw_false_text = 15
+    learning_rate = 1e-4
+
+
+# Named configs for "etc" which are orthogonal to "env" and "task", need to be added at the end
+
+
+@ex.named_config
+def step25k():
+    max_epoch = 100
+    max_steps = 25000
+
+
+@ex.named_config
+def step50k():
+    max_epoch = 100
+    max_steps = 50000
+
+
+@ex.named_config
+def step100k():
+    max_epoch = 100
+    max_steps = 100000
+
+
+@ex.named_config
+def step200k():
+    max_epoch = 200
+    max_steps = 200000
+
+
+@ex.named_config
+def vit32_base():
+    vit = "vit_base_patch32_384"
+    patch_size = 32
+    hidden_size = 768
+    num_heads = 12
+    num_layers = 12
+
+
+
+================================================
+FILE: clip/Costom_task_guideline
+================================================
+1. config.py - config and loss_name
+2. module/vilt_*_module
+3. module/objectives
+4. module/vilt_utils
+5. datasets/inits and datasets/{}_datasets
+6. datamodule/inits and datamodule/{}_datamodules
+7. gadgets/my_metric if need new metric
+
+
+================================================
+FILE: clip/datamodules/__init__.py
+================================================
+from .mmimdb_datamodule import MMIMDBDataModule
+from .hatememes_datamodule import HateMemesDataModule
+from .food101_datamodule import FOOD101DataModule
+
+_datamodules = {
+    "mmimdb": MMIMDBDataModule,
+    "Hatefull_Memes": HateMemesDataModule,
+    "Food101": FOOD101DataModule,
+}
+
+
+
+================================================
+FILE: clip/datamodules/datamodule_base.py
+================================================
+import torch
+
+from pytorch_lightning import LightningDataModule
+from torch.utils.data import DataLoader
+
+class BaseDataModule(LightningDataModule):
+    def __init__(self, _config):
+        super().__init__()
+
+        self.data_dir = _config["data_root"]
+
+        self.num_workers = _config["num_workers"]
+        self.batch_size = _config["per_gpu_batchsize"]
+        self.eval_batch_size = self.batch_size
+
+        self.image_size = _config["image_size"]
+        self.max_text_len = _config["max_text_len"]
+        self.draw_false_image = _config["draw_false_image"]
+        self.draw_false_text = _config["draw_false_text"]
+        self.image_only = _config["image_only"]
+        
+        # construct missing modality info
+        self.missing_info = {
+            'ratio' : _config["missing_ratio"],
+            'type' : _config["missing_type"],
+            'both_ratio' : _config["both_ratio"],
+            'missing_table_root': _config["missing_table_root"],
+            'simulate_missing' : _config["simulate_missing"]
+        }
+        # for bash execution
+        if _config["test_ratio"] is not None:
+            self.missing_info['ratio']['val'] = _config["test_ratio"]
+            self.missing_info['ratio']['test'] = _config["test_ratio"]
+        if _config["test_type"] is not None:
+            self.missing_info['type']['val'] = _config["test_type"]
+            self.missing_info['type']['test'] = _config["test_type"]
+            
+        self.train_transform_keys = (
+            ["default_train"]
+            if len(_config["train_transform_keys"]) == 0
+            else _config["train_transform_keys"]
+        )
+
+        self.val_transform_keys = (
+            ["default_val"]
+            if len(_config["val_transform_keys"]) == 0
+            else _config["val_transform_keys"]
+        )
+        self.setup_flag = False
+
+    @property
+    def dataset_cls(self):
+        raise NotImplementedError("return tuple of dataset class")
+
+    @property
+    def dataset_name(self):
+        raise NotImplementedError("return name of dataset")
+
+    def set_train_dataset(self):
+        self.train_dataset = self.dataset_cls(
+            self.data_dir,
+            self.train_transform_keys,
+            split="train",
+            image_size=self.image_size,
+            draw_false_image=self.draw_false_image,
+            draw_false_text=self.draw_false_text,
+            image_only=self.image_only,
+            missing_info=self.missing_info,
+        )
+
+    def set_val_dataset(self):
+        self.val_dataset = self.dataset_cls(
+            self.data_dir,
+            self.val_transform_keys,
+            split="val",
+            image_size=self.image_size,
+            draw_false_image=self.draw_false_image,
+            draw_false_text=self.draw_false_text,
+            image_only=self.image_only,
+            missing_info=self.missing_info,
+        )
+
+        if hasattr(self, "dataset_cls_no_false"):
+            self.val_dataset_no_false = self.dataset_cls_no_false(
+                self.data_dir,
+                self.val_transform_keys,
+                split="val",
+                image_size=self.image_size,
+                draw_false_image=0,
+                draw_false_text=0,
+                image_only=self.image_only,
+            )
+
+    def make_no_false_val_dset(self, image_only=False):
+        return self.dataset_cls_no_false(
+            self.data_dir,
+            self.val_transform_keys,
+            split="val",
+            image_size=self.image_size,
+            draw_false_image=0,
+            draw_false_text=0,
+            image_only=image_only,
+        )
+
+    def set_test_dataset(self):
+        self.test_dataset = self.dataset_cls(
+            self.data_dir,
+            self.val_transform_keys,
+            split="test",
+            image_size=self.image_size,
+            draw_false_image=self.draw_false_image,
+            draw_false_text=self.draw_false_text,
+            image_only=self.image_only,
+            missing_info=self.missing_info,
+        )
+
+    def setup(self, stage):
+        if not self.setup_flag:
+            self.set_train_dataset()
+            self.set_val_dataset()
+            self.set_test_dataset()
+
+            self.setup_flag = True
+
+    def train_dataloader(self):
+        loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            collate_fn=self.train_dataset.collate,
+        )
+        return loader
+
+    def val_dataloader(self):
+        loader = DataLoader(
+            self.val_dataset,
+            batch_size=self.eval_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            collate_fn=self.val_dataset.collate,
+        )
+        return loader
+
+    def test_dataloader(self):
+        loader = DataLoader(
+            self.test_dataset,
+            batch_size=self.eval_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            collate_fn=self.test_dataset.collate,
+        )
+        return loader
+
+
+
+================================================
+FILE: clip/datamodules/food101_datamodule.py
+================================================
+from clip.datasets import FOOD101Dataset
+from .datamodule_base import BaseDataModule
+from collections import defaultdict
+
+
+class FOOD101DataModule(BaseDataModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def dataset_cls(self):
+        return FOOD101Dataset
+
+    @property
+    def dataset_name(self):
+        return "food101"
+
+    def setup(self, stage):
+        super().setup(stage)
+
+
+
+
+================================================
+FILE: clip/datamodules/hatememes_datamodule.py
+================================================
+from clip.datasets import HateMemesDataset
+from .datamodule_base import BaseDataModule
+from collections import defaultdict
+
+
+class HateMemesDataModule(BaseDataModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def dataset_cls(self):
+        return HateMemesDataset
+
+    @property
+    def dataset_name(self):
+        return "Hatefull_Memes"
+
+    def setup(self, stage):
+        super().setup(stage)
+
+
+
+================================================
+FILE: clip/datamodules/mmimdb_datamodule.py
+================================================
+from clip.datasets import MMIMDBDataset
+from .datamodule_base import BaseDataModule
+from collections import defaultdict
+
+
+class MMIMDBDataModule(BaseDataModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def dataset_cls(self):
+        return MMIMDBDataset
+
+    @property
+    def dataset_name(self):
+        return "mmimdb"
+
+    def setup(self, stage):
+        super().setup(stage)
+
+
+
+
+================================================
+FILE: clip/datamodules/multitask_datamodule.py
+================================================
+import functools
+
+from pytorch_lightning import LightningDataModule
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import ConcatDataset
+from torch.utils.data.distributed import DistributedSampler
+
+from . import _datamodules
+
+
+class MTDataModule(LightningDataModule):
+    def __init__(self, _config, dist=False):
+        datamodule_keys = _config["datasets"]
+        assert len(datamodule_keys) > 0
+
+        super().__init__()
+
+        self.dm_keys = datamodule_keys
+        self.dm_dicts = {key: _datamodules[key](_config) for key in datamodule_keys}
+        self.dms = [v for k, v in self.dm_dicts.items()]
+
+        self.batch_size = self.dms[0].batch_size
+        self.num_workers = self.dms[0].num_workers
+
+        self.dist = dist
+
+    def prepare_data(self):
+        for dm in self.dms:
+            dm.prepare_data()
+
+    def setup(self, stage):
+        for dm in self.dms:
+            dm.setup(stage)
+
+        self.train_dataset = ConcatDataset([dm.train_dataset for dm in self.dms])
+        self.val_dataset = ConcatDataset([dm.val_dataset for dm in self.dms])
+        self.test_dataset = ConcatDataset([dm.test_dataset for dm in self.dms])
+
+        self.collate = functools.partial(
+            self.dms[0].train_dataset.collate
+        )
+
+        if self.dist:
+            self.train_sampler = DistributedSampler(self.train_dataset, shuffle=True)
+            self.val_sampler = DistributedSampler(self.val_dataset, shuffle=True)
+            self.test_sampler = DistributedSampler(self.test_dataset, shuffle=False)
+        else:
+            self.train_sampler = None
+            self.val_sampler = None
+            self.test_sampler = None
+
+    def train_dataloader(self):
+        loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            sampler=self.train_sampler,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
+        )
+        return loader
+
+    def val_dataloader(self, batch_size=None):
+        loader = DataLoader(
+            self.val_dataset,
+            batch_size=batch_size if batch_size is not None else self.batch_size,
+            sampler=self.val_sampler,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
+        )
+        return loader
+
+    def test_dataloader(self):
+        loader = DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            sampler=self.test_sampler,
+            num_workers=self.num_workers,
+            collate_fn=self.collate,
+        )
+        return loader
+
+
+
+================================================
+FILE: clip/datasets/__init__.py
+================================================
+from .mmimdb_dataset import MMIMDBDataset
+from .hatememes_dataset import HateMemesDataset
+from .food101_dataset import FOOD101Dataset
+
+
+
+================================================
+FILE: clip/datasets/base_dataset.py
+================================================
+import random
+import torch
+import io
+import pyarrow as pa
+import os
+
+from PIL import Image
+from clip.transforms import keys_to_transforms
+
+
+class BaseDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        data_dir: str,
+        transform_keys: list,
+        image_size: int,
+        names: list,
+        text_column_name: str = "",
+        remove_duplicate=True,
+        max_text_len=40,
+        draw_false_image=0,
+        draw_false_text=0,
+        image_only=False,
+        missing_ratio={},
+        missing_type={},
+    ):
+        """
+        data_dir : where dataset file *.arrow lives; existence should be guaranteed via DataModule.prepare_data
+        transform_keys : keys for generating augmented views of images
+        text_column_name : pyarrow table column name that has list of strings as elements
+        """
+        assert len(transform_keys) >= 1
+        super().__init__()
+
+        self.transforms = keys_to_transforms(transform_keys, size=image_size)
+        self.text_column_name = text_column_name
+        self.names = names
+        self.max_text_len = max_text_len
+        self.draw_false_image = draw_false_image
+        self.draw_false_text = draw_false_text
+        self.image_only = image_only
+        self.data_dir = data_dir
+
+        if len(names) != 0:
+            tables = [
+                pa.ipc.RecordBatchFileReader(
+                    pa.memory_map(f"{data_dir}/{name}.arrow", "r")
+                ).read_all()
+                for name in names
+                if os.path.isfile(f"{data_dir}/{name}.arrow")
+            ]
+
+            self.table_names = list()
+            for i, name in enumerate(names):
+                self.table_names += [name] * len(tables[i])
+
+            self.table = pa.concat_tables(tables, promote=True)
+            if text_column_name != "":
+                self.text_column_name = text_column_name
+                self.all_texts = self.table[text_column_name].to_pandas().tolist()
+                self.all_texts = (
+                    [list(set(texts)) for texts in self.all_texts]
+                    if remove_duplicate
+                    else self.all_texts
+                )
+            else:
+                self.all_texts = list()
+        else:
+            self.all_texts = list()
+
+        self.index_mapper = dict()
+
+        if 'text_aug' in self.table.column_names:
+            self.aug_texts = self.table['text_aug'].to_pandas().tolist()
+        else:
+            self.aug_texts = None
+
+        if text_column_name != "" and not self.image_only:
+            j = 0
+            for i, texts in enumerate(self.all_texts):
+                for _j in range(len(texts)):
+                    self.index_mapper[j] = (i, _j)
+                    j += 1
+        else:
+            for i in range(len(self.table)):
+                self.index_mapper[i] = (i, None)
+        
+        
+    @property
+    def corpus(self):
+        return [text for texts in self.all_texts for text in texts]
+
+    def __len__(self):
+        return len(self.index_mapper)
+
+    def get_raw_image(self, index, image_key="image"):
+        index, caption_index = self.index_mapper[index]
+        image_bytes = io.BytesIO(self.table[image_key][index].as_py())
+        image_bytes.seek(0)
+        return Image.open(image_bytes).convert("RGB")
+
+    def get_image(self, index, image_key="image"):
+        image = self.get_raw_image(index, image_key=image_key)
+        image_tensor = [tr(image) for tr in self.transforms]
+        return {
+            "image": image_tensor,
+            "img_index": self.index_mapper[index][0],
+            "cap_index": self.index_mapper[index][1],
+            "raw_index": index,
+        }
+
+    def get_false_image(self, rep, image_key="image"):
+        random_index = random.randint(0, len(self.index_mapper) - 1)
+        image = self.get_raw_image(random_index, image_key=image_key)
+        image_tensor = [tr(image) for tr in self.transforms]
+        return {f"false_image_{rep}": image_tensor}
+
+    def get_text(self, raw_index):
+        index, caption_index = self.index_mapper[raw_index]
+
+        text = self.all_texts[index][caption_index]
+
+        '''encoding = self.tokenizer(
+            text,
+            padding="max_length",
+            truncation=True,
+            max_length=self.max_text_len,
+            return_special_tokens_mask=True,
+        )'''
+        return {
+            #"text": (text, encoding),
+            "text": text,
+            "img_index": index,
+            "cap_index": caption_index,
+            "raw_index": raw_index,
+        }
+
+    def get_false_text(self, rep):
+        random_index = random.randint(0, len(self.index_mapper) - 1)
+
+        index, caption_index = self.index_mapper[random_index]
+        text = self.all_texts[index][caption_index]
+        encoding = self.tokenizer(
+            text,
+            truncation=True,
+            max_length=self.max_text_len,
+            return_special_tokens_mask=True,
+        )
+        return {f"false_text_{rep}": (text, encoding)}
+
+    def get_suite(self, index):
+        result = None
+        while result is None:
+            try:
+                ret = dict()
+                ret.update(self.get_image(index))
+                if not self.image_only:
+                    txt = self.get_text(index)
+                    ret.update({"replica": True if txt["cap_index"] > 0 else False})
+                    ret.update(txt)
+
+                for i in range(self.draw_false_image):
+                    ret.update(self.get_false_image(i))
+                for i in range(self.draw_false_text):
+                    ret.update(self.get_false_text(i))
+                result = True
+            except Exception as e:
+                print(f"Error while read file idx {index} in {self.names[0]} -> {e}")
+                index = random.randint(0, len(self.index_mapper) - 1)
+        return ret
+
+    def collate(self, batch):
+        batch_size = len(batch)
+        keys = set([key for b in batch for key in b.keys()])
+        dict_batch = {k: [dic[k] if k in dic else None for dic in batch] for k in keys}
+
+        img_keys = [k for k in list(dict_batch.keys()) if "image" in k]
+        img_sizes = list()
+
+        for img_key in img_keys:
+            img = dict_batch[img_key]
+            img_sizes += [ii.shape for i in img if i is not None for ii in i]
+
+        for size in img_sizes:
+            assert (
+                len(size) == 3
+            ), f"Collate error, an image should be in shape of (3, H, W), instead of given {size}"
+
+        if len(img_keys) != 0:
+            max_height = max([i[1] for i in img_sizes])
+            max_width = max([i[2] for i in img_sizes])
+
+        for img_key in img_keys:
+            img = dict_batch[img_key]
+            view_size = len(img[0])
+
+            new_images = [
+                torch.zeros(batch_size, 3, max_height, max_width)
+                for _ in range(view_size)
+            ]
+
+            for bi in range(batch_size):
+                orig_batch = img[bi]
+                for vi in range(view_size):
+                    if orig_batch is None:
+                        new_images[vi][bi] = None
+                    else:
+                        orig = img[bi][vi]
+                        new_images[vi][bi, :, : orig.shape[1], : orig.shape[2]] = orig
+
+            dict_batch[img_key] = new_images
+
+        txt_keys = [k for k in list(dict_batch.keys()) if "text" in k]
+
+        if len(txt_keys) != 0:
+
+            for i, txt_key in enumerate(txt_keys):
+                texts = [d for d in dict_batch[txt_key]],
+
+                dict_batch[txt_key] = texts
+
+        return dict_batch
+
+
+
+================================================
+FILE: clip/datasets/food101_dataset.py
+================================================
+from .base_dataset import BaseDataset
+import torch
+import random, os
+
+class FOOD101Dataset(BaseDataset):
+    def __init__(self, *args, split="", missing_info={}, **kwargs):
+        assert split in ["train", "val", "test"]
+        self.split = split
+
+        if split == "train":
+            names = ["food101_train"]
+        elif split == "val":
+            names = ["food101_val"]
+        elif split == "test":
+            names = ["food101_test"] 
+
+        super().__init__(
+            *args,
+            **kwargs,
+            names=names,
+            text_column_name="text",
+            remove_duplicate=False,
+        )
+        
+        # missing modality control        
+        self.simulate_missing = missing_info['simulate_missing']
+        missing_ratio = missing_info['ratio'][split]
+        mratio = str(missing_ratio).replace('.','')
+        missing_type = missing_info['type'][split]    
+        both_ratio = missing_info['both_ratio']
+        missing_table_root = missing_info['missing_table_root']
+        missing_table_name = f'{names[0]}_missing_{missing_type}_{mratio}.pt'
+        missing_table_path = os.path.join(missing_table_root, missing_table_name)
+        
+        # use image data to formulate missing table
+        total_num = len(self.table['image'])
+        
+        if os.path.exists(missing_table_path):
+            missing_table = torch.load(missing_table_path)
+            if len(missing_table) != total_num:
+                print('missing table mismatched!')
+                exit()
+        else:
+            missing_table = torch.zeros(total_num)
+            
+            if missing_ratio > 0:
+                missing_index = random.sample(range(total_num), int(total_num*missing_ratio))
+
+                if missing_type == 'text':
+                    missing_table[missing_index] = 1
+                elif missing_type == 'image':
+                    missing_table[missing_index] = 2
+                elif missing_type == 'both':
+                    missing_table[missing_index] = 1
+                    missing_index_image  = random.sample(missing_index, int(len(missing_index)*both_ratio))
+                    missing_table[missing_index_image] = 2
+                    
+                torch.save(missing_table, missing_table_path)
+
+        self.missing_table = missing_table
+
+       
+    def __getitem__(self, index):
+        # index -> pair data index
+        # image_index -> image index in table
+        # question_index -> plot index in texts of the given image
+        image_index, question_index = self.index_mapper[index]
+        
+        # For the case of training with modality-complete data
+        # Simulate missing modality with random assign the missing type of samples
+        simulate_missing_type = 0
+        if self.split == 'train' and self.simulate_missing and self.missing_table[image_index] == 0:
+            simulate_missing_type = random.choice([0,1,2])
+            
+        image_tensor = self.get_image(index)["image"]
+        
+        # missing image, dummy image is all-one image
+        if self.missing_table[image_index] == 2 or simulate_missing_type == 2:
+            for idx in range(len(image_tensor)):
+                image_tensor[idx] = torch.ones(image_tensor[idx].size()).float()
+            
+        #missing text, dummy text is ''
+        if self.missing_table[image_index] == 1 or simulate_missing_type == 1:
+            text = ''
+        else:
+            text = self.get_text(index)["text"]
+
+        
+        labels = self.table["label"][image_index].as_py()
+        
+        return {
+            "image": image_tensor,
+            "text": text,
+            "label": labels,
+            "missing_type": self.missing_table[image_index].item()+simulate_missing_type,
+        }
+
+
+
+================================================
+FILE: clip/datasets/hatememes_dataset.py
+================================================
+from .base_dataset import BaseDataset
+import torch
+import random, os
+
+class HateMemesDataset(BaseDataset):
+    def __init__(self, *args, split="", missing_info={}, **kwargs):
+        assert split in ["train", "val", "test"]
+        self.split = split
+
+        if split == "train":
+            names = ["hatememes_train"]
+        elif split == "val":
+            names = ["hatememes_dev"]
+        elif split == "test":
+            names = ["hatememes_test"] 
+
+        super().__init__(
+            *args,
+            **kwargs,
+            names=names,
+            text_column_name="text",
+            remove_duplicate=False,
+        )
+        
+        # missing modality control        
+        self.simulate_missing = missing_info['simulate_missing']
+        missing_ratio = missing_info['ratio'][split]
+        mratio = str(missing_ratio).replace('.','')
+        missing_type = missing_info['type'][split]    
+        both_ratio = missing_info['both_ratio']
+        missing_table_root = missing_info['missing_table_root']
+        missing_table_name = f'{names[0]}_missing_{missing_type}_{mratio}.pt'
+        missing_table_path = os.path.join(missing_table_root, missing_table_name)
+        
+        # use image data to formulate missing table
+        total_num = len(self.table['image'])
+        
+        if os.path.exists(missing_table_path):
+            missing_table = torch.load(missing_table_path)
+            if len(missing_table) != total_num:
+                print('missing table mismatched!')
+                exit()
+        else:
+            missing_table = torch.zeros(total_num)
+            
+            if missing_ratio > 0:
+                missing_index = random.sample(range(total_num), int(total_num*missing_ratio))
+
+                if missing_type == 'text':
+                    missing_table[missing_index] = 1
+                elif missing_type == 'image':
+                    missing_table[missing_index] = 2
+                elif missing_type == 'both':
+                    missing_table[missing_index] = 1
+                    missing_index_image  = random.sample(missing_index, int(len(missing_index)*both_ratio))
+                    missing_table[missing_index_image] = 2
+                    
+                torch.save(missing_table, missing_table_path)
+
+        self.missing_table = missing_table
+
+    def __getitem__(self, index):
+        # index -> pair data index
+        # image_index -> image index in table
+        # question_index -> plot index in texts of the given image
+        image_index, question_index = self.index_mapper[index]
+        
+        # For the case of training with modality-complete data
+        # Simulate missing modality with random assign the missing type of samples
+        simulate_missing_type = 0
+        if self.split == 'train' and self.simulate_missing and self.missing_table[image_index] == 0:
+            simulate_missing_type = random.choice([0,1,2])
+            
+        image_tensor = self.get_image(index)["image"]
+        
+        # missing image, dummy image is all-one image
+        if self.missing_table[image_index] == 2 or simulate_missing_type == 2:
+            for idx in range(len(image_tensor)):
+                image_tensor[idx] = torch.ones(image_tensor[idx].size()).float()
+            
+        #missing text, dummy text is ''
+        if self.missing_table[image_index] == 1 or simulate_missing_type == 1:
+            text = ''
+        else:
+            text = self.get_text(index)["text"]
+
+        
+        labels = self.table["label"][image_index].as_py()
+        
+        return {
+            "image": image_tensor,
+            "text": text,
+            "label": labels,
+            "missing_type": self.missing_table[image_index].item()+simulate_missing_type,
+        }
+
+
+
+================================================
+FILE: clip/datasets/mmimdb_dataset.py
+================================================
+from .base_dataset import BaseDataset
+import torch
+import random
+import os
+
+class MMIMDBDataset(BaseDataset):
+    def __init__(self, *args, split="", missing_info={}, **kwargs):
+        assert split in ["train", "val", "test"]
+        self.split = split
+
+        if split == "train":
+            names = ["mmimdb_train"]
+        elif split == "val":
+            names = ["mmimdb_dev"]
+        elif split == "test":
+            names = ["mmimdb_test"]  
+
+        super().__init__(
+            *args,
+            **kwargs,
+            names=names,
+            text_column_name="plots",
+            remove_duplicate=False,
+        )
+        
+        # missing modality control        
+        self.simulate_missing = missing_info['simulate_missing']
+        missing_ratio = missing_info['ratio'][split]
+        mratio = str(missing_ratio).replace('.','')
+        missing_type = missing_info['type'][split]    
+        both_ratio = missing_info['both_ratio']
+        missing_table_root = missing_info['missing_table_root']
+        missing_table_name = f'{names[0]}_missing_{missing_type}_{mratio}.pt'
+        missing_table_path = os.path.join(missing_table_root, missing_table_name)
+        
+        # use image data to formulate missing table
+        total_num = len(self.table['image'])
+
+        if os.path.exists(missing_table_path):
+            missing_table = torch.load(missing_table_path)
+            if len(missing_table) != total_num:
+                print('missing table mismatched!')
+                exit()
+        else:
+            missing_table = torch.zeros(total_num)
+            
+            if missing_ratio > 0:
+                missing_index = random.sample(range(total_num), int(total_num*missing_ratio))
+
+                if missing_type == 'text':
+                    missing_table[missing_index] = 1
+                elif missing_type == 'image':
+                    missing_table[missing_index] = 2
+                elif missing_type == 'both':
+                    missing_table[missing_index] = 1
+                    missing_index_image  = random.sample(missing_index, int(len(missing_index)*both_ratio))
+                    missing_table[missing_index_image] = 2
+                    
+                torch.save(missing_table, missing_table_path)
+
+        self.missing_table = missing_table
+        
+    def __getitem__(self, index):
+        # index -> pair data index
+        # image_index -> image index in table
+        # question_index -> plot index in texts of the given image
+        image_index, question_index = self.index_mapper[index]
+        
+        # For the case of training with modality-complete data
+        # Simulate missing modality with random assign the missing type of samples
+        simulate_missing_type = 0
+        if self.split == 'train' and self.simulate_missing and self.missing_table[image_index] == 0:
+            simulate_missing_type = random.choice([0,1,2])
+            
+        image_tensor = self.get_image(index)["image"]
+        
+        # missing image, dummy image is all-one image
+        if self.missing_table[image_index] == 2 or simulate_missing_type == 2:
+            for idx in range(len(image_tensor)):
+                image_tensor[idx] = torch.ones(image_tensor[idx].size()).float()
+            
+        #missing text, dummy text is ''
+        if self.missing_table[image_index] == 1 or simulate_missing_type == 1:
+            text = ''
+        else:
+            text = self.get_text(index)["text"]
+
+        
+        labels = self.table["label"][image_index].as_py()
+        
+        return {
+            "image": image_tensor,
+            "text": text,
+            "label": labels,
+            "missing_type": self.missing_table[image_index].item()+simulate_missing_type,
+        }
+
+
+
+================================================
+FILE: clip/gadgets/__init__.py
+================================================
+[Empty file]
+
+
+================================================
+FILE: clip/gadgets/my_metrics.py
+================================================
+import torch
+from torchmetrics.functional import f1_score, auroc
+from pytorch_lightning.metrics import Metric
+
+
+class Accuracy(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("correct", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+
+    def update(self, logits, target):
+        logits, target = (
+            logits.detach().to(self.correct.device),
+            target.detach().to(self.correct.device),
+        )
+        if logits.size(-1)>1:
+            preds = logits.argmax(dim=-1)
+        else:
+            preds = (torch.sigmoid(logits)>0.5).long()
+            
+        preds = preds[target != -100]
+        target = target[target != -100]
+        if target.numel() == 0:
+            return 1
+
+        assert preds.shape == target.shape
+
+        self.correct += torch.sum(preds == target)
+        self.total += target.numel()
+
+    def compute(self):
+        return self.correct / self.total
+
+class AUROC(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("correct", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("logits", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
+
+    def update(self, logits, target):
+        logits, targets = (
+            logits.detach().to(self.correct.device),
+            target.detach().to(self.correct.device),
+        )
+        
+        self.logits.append(logits)
+        self.targets.append(targets)
+
+
+    def compute(self):
+        if type(self.logits) == list:
+            all_logits = torch.cat(self.logits)
+            all_targets = torch.cat(self.targets).long()
+        else:
+            all_logits = self.logits
+            all_targets = self.targets.long()
+    
+        if all_logits.size(-1)>1:
+            all_logits = torch.softmax(all_logits, dim=1)
+            AUROC = auroc(all_logits, all_targets, num_classes=2)
+        else:
+            all_logits = torch.sigmoid(all_logits)
+            AUROC = auroc(all_logits, all_targets)
+        
+        return AUROC
+    
+class F1_Score(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("correct", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("logits", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
+
+    def update(self, logits, target):
+        logits, targets = (
+            logits.detach().to(self.correct.device),
+            target.detach().to(self.correct.device),
+        )
+        
+        self.logits.append(logits)
+        self.targets.append(targets)
+
+
+    def compute(self, use_sigmoid=True):
+        if type(self.logits) == list:
+            all_logits = torch.cat(self.logits)
+            all_targets = torch.cat(self.targets).long()
+        else:
+            all_logits = self.logits
+            all_targets = self.targets.long()
+        if use_sigmoid:
+            all_logits = torch.sigmoid(all_logits)
+        F1_Micro = f1_score(all_logits, all_targets, average='micro')
+        F1_Macro = f1_score(all_logits, all_targets, average='macro', num_classes=23)
+        F1_Samples = f1_score(all_logits, all_targets, average='samples')
+        F1_Weighted = f1_score(all_logits, all_targets, average='weighted', num_classes=23)
+        return (F1_Micro, F1_Macro, F1_Samples, F1_Weighted)
+    
+class check(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("correct", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("logits", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
+
+    def update(self, logits, target):
+        logits, targets = (
+            logits.detach().to(self.correct.device),
+            target.detach().to(self.correct.device),
+        )
+        
+        self.logits.append(logits)
+        self.targets.append(targets)
+
+
+    def compute(self, use_sigmoid=True):
+        if type(self.logits) == list:
+            all_logits = torch.cat(self.logits).long()
+            all_targets = torch.cat(self.targets).long()
+        else:
+            all_logits = self.logits.long()
+            all_targets = self.targets.long()
+
+        mislead = all_logits ^ all_targets
+        accuracy = mislead.sum(dim=0)
+        return accuracy
+        
+class Scalar(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("scalar", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+
+    def update(self, scalar):
+        if isinstance(scalar, torch.Tensor):
+            scalar = scalar.detach().to(self.scalar.device)
+        else:
+            scalar = torch.tensor(scalar).float().to(self.scalar.device)
+        self.scalar += scalar
+        self.total += 1
+
+    def compute(self):
+        return self.scalar / self.total    
+    
+class Scalar2(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("scalar", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+
+    def update(self, scalar, num):
+        if isinstance(scalar, torch.Tensor):
+            scalar = scalar.detach().to(self.scalar.device)
+        else:
+            scalar = torch.tensor(scalar).float().to(self.scalar.device)
+        
+        self.scalar += scalar
+        self.total += num
+
+    def compute(self):
+        return self.scalar / self.total
+
+
+class VQAScore(Metric):
+    def __init__(self, dist_sync_on_step=False):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        self.add_state("score", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+
+    def update(self, logits, target):
+        logits, target = (
+            logits.detach().float().to(self.score.device),
+            target.detach().float().to(self.score.device),
+        )
+        logits = torch.max(logits, 1)[1]
+        one_hots = torch.zeros(*target.size()).to(target)
+        one_hots.scatter_(1, logits.view(-1, 1), 1)
+        scores = one_hots * target
+
+        self.score += scores.sum()
+        self.total += len(logits)
+
+    def compute(self):
+        return self.score / self.total
+
+
+
+================================================
+FILE: clip/modules/__init__.py
+================================================
+from .clip_missing_aware_prompt_module import CLIPransformerSS
+
+
+
+================================================
+FILE: clip/modules/clip.py
+================================================
+import hashlib
+import os
+import urllib
+import warnings
+from typing import Any, Union, List
+from pkg_resources import packaging
+
+import torch
+from PIL import Image
+from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+from tqdm import tqdm
+
+from .vision_transformer_prompts import build_model
+from .simple_tokenizer import SimpleTokenizer as _Tokenizer
+
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
+
+
+if packaging.version.parse(torch.__version__) < packaging.version.parse("1.7.1"):
+    warnings.warn("PyTorch version 1.7.1 or higher is recommended")
+
+
+__all__ = ["available_models", "load", "tokenize"]
+_tokenizer = _Tokenizer()
+
+_MODELS = {
+    "RN50": "https://openaipublic.azureedge.net/clip/models/afeb0e10f9e5a86da6080e35cf09123aca3b358a0c3e3b6c78a7b63bc04b6762/RN50.pt",
+    "RN101": "https://openaipublic.azureedge.net/clip/models/8fa8567bab74a42d41c5915025a8e4538c3bdbe8804a470a72f30b0d94fab599/RN101.pt",
+    "RN50x4": "https://openaipublic.azureedge.net/clip/models/7e526bd135e493cef0776de27d5f42653e6b4c8bf9e0f653bb11773263205fdd/RN50x4.pt",
+    "RN50x16": "https://openaipublic.azureedge.net/clip/models/52378b407f34354e150460fe41077663dd5b39c54cd0bfd2b27167a4a06ec9aa/RN50x16.pt",
+    "RN50x64": "https://openaipublic.azureedge.net/clip/models/be1cfb55d75a9666199fb2206c106743da0f6468c9d327f3e0d0a543a9919d9c/RN50x64.pt",
+    "ViT-B/32": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt",
+    "ViT-B/16": "https://openaipublic.azureedge.net/clip/models/5806e77cd80f8b59890b7e101eabd078d9fb84e6937f9e85e4ecb61988df416f/ViT-B-16.pt",
+    "ViT-L/14": "https://openaipublic.azureedge.net/clip/models/b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836/ViT-L-14.pt",
+    "ViT-L/14@336px": "https://openaipublic.azureedge.net/clip/models/3035c92b350959924f9f00213499208652fc7ea050643e8b385c2dac08641f02/ViT-L-14-336px.pt",
+}
+
+
+def _download(url: str, root: str = os.path.expanduser("~/.cache/clip")):
+    os.makedirs(root, exist_ok=True)
+    filename = os.path.basename(url)
+
+    expected_sha256 = url.split("/")[-2]
+    download_target = os.path.join(root, filename)
+
+    if os.path.exists(download_target) and not os.path.isfile(download_target):
+        raise RuntimeError(f"{download_target} exists and is not a regular file")
+
+    if os.path.isfile(download_target):
+        if hashlib.sha256(open(download_target, "rb").read()).hexdigest() == expected_sha256:
+            return download_target
+        else:
+            warnings.warn(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
+
+    import ssl
+    context = ssl._create_unverified_context()
+    with urllib.request.urlopen(url, context=context) as source, open(download_target, "wb") as output:
+        with tqdm(total=int(source.info().get("Content-Length")), ncols=80, unit='iB', unit_scale=True) as loop:
+            while True:
+                buffer = source.read(8192)
+                if not buffer:
+                    break
+
+                output.write(buffer)
+                loop.update(len(buffer))
+
+    if hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
+        raise RuntimeError(f"Model has been downloaded but the SHA256 checksum does not not match")
+
+    return download_target
+
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+
+
+def _transform(n_px):
+    return Compose([
+        Resize(n_px, interpolation=BICUBIC),
+        CenterCrop(n_px),
+        _convert_image_to_rgb,
+        ToTensor(),
+        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    ])
+
+
+def available_models() -> List[str]:
+    """Returns the names of available CLIP models"""
+    return list(_MODELS.keys())
+
+
+def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit: bool = False, download_root: str = None):
+    """Load a CLIP model
+
+    Parameters
+    ----------
+    name : str
+        A model name listed by `clip.available_models()`, or the path to a model checkpoint containing the state_dict
+
+    device : Union[str, torch.device]
+        The device to put the loaded model
+
+    jit : bool
+        Whether to load the optimized JIT model or more hackable non-JIT model (default).
+
+    download_root: str
+        path to download the model files; by default, it uses "~/.cache/clip"
+
+    Returns
+    -------
+    model : torch.nn.Module
+        The CLIP model
+
+    preprocess : Callable[[PIL.Image], torch.Tensor]
+        A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input
+    """
+    if name in _MODELS:
+        model_path = _download(_MODELS[name], download_root or os.path.expanduser("~/.cache/clip"))
+    elif os.path.isfile(name):
+        model_path = name
+    else:
+        raise RuntimeError(f"Model {name} not found; available models = {available_models()}")
+
+    with open(model_path, 'rb') as opened_file:
+        try:
+            # loading JIT archive
+            model = torch.jit.load(opened_file, map_location=device if jit else "cpu").eval()
+            state_dict = None
+        except RuntimeError:
+            # loading saved state dict
+            if jit:
+                warnings.warn(f"File {model_path} is not a JIT archive. Loading as a state dict instead")
+                jit = False
+            state_dict = torch.load(opened_file, map_location="cpu")
+
+    if not jit:
+        model = build_model(state_dict or model.state_dict()).to(device)
+        if str(device) == "cpu":
+            model.float()
+        return model, _transform(model.visual.input_resolution)
+
+    # patch the device names
+    device_holder = torch.jit.trace(lambda: torch.ones([]).to(torch.device(device)), example_inputs=[])
+    device_node = [n for n in device_holder.graph.findAllNodes("prim::Constant") if "Device" in repr(n)][-1]
+
+    def _node_get(node: torch._C.Node, key: str):
+        """Gets attributes of a node which is polymorphic over return type.
+        
+        From https://github.com/pytorch/pytorch/pull/82628
+        """
+        sel = node.kindOf(key)
+        return getattr(node, sel)(key)
+
+    def patch_device(module):
+        try:
+            graphs = [module.graph] if hasattr(module, "graph") else []
+        except RuntimeError:
+            graphs = []
+
+        if hasattr(module, "forward1"):
+            graphs.append(module.forward1.graph)
+
+        for graph in graphs:
+            for node in graph.findAllNodes("prim::Constant"):
+                if "value" in node.attributeNames() and str(_node_get(node, "value")).startswith("cuda"):
+                    node.copyAttributes(device_node)
+
+    model.apply(patch_device)
+    patch_device(model.encode_image)
+    patch_device(model.encode_text)
+
+    # patch dtype to float32 on CPU
+    if str(device) == "cpu":
+        float_holder = torch.jit.trace(lambda: torch.ones([]).float(), example_inputs=[])
+        float_input = list(float_holder.graph.findNode("aten::to").inputs())[1]
+        float_node = float_input.node()
+
+        def patch_float(module):
+            try:
+                graphs = [module.graph] if hasattr(module, "graph") else []
+            except RuntimeError:
+                graphs = []
+
+            if hasattr(module, "forward1"):
+                graphs.append(module.forward1.graph)
+
+            for graph in graphs:
+                for node in graph.findAllNodes("aten::to"):
+                    inputs = list(node.inputs())
+                    for i in [1, 2]:  # dtype can be the second or third argument to aten::to()
+                        if _node_get(inputs[i].node(), "value") == 5:
+                            inputs[i].node().copyAttributes(float_node)
+
+        model.apply(patch_float)
+        patch_float(model.encode_image)
+        patch_float(model.encode_text)
+
+        model.float()
+
+    return model, _transform(model.input_resolution.item())
+
+
+def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: bool = False) -> Union[torch.IntTensor, torch.LongTensor]:
+    """
+    Returns the tokenized representation of given input string(s)
+
+    Parameters
+    ----------
+    texts : Union[str, List[str]]
+        An input string or a list of input strings to tokenize
+
+    context_length : int
+        The context length to use; all CLIP models use 77 as the context length
+
+    truncate: bool
+        Whether to truncate the text in case its encoding is longer than the context length
+
+    Returns
+    -------
+    A two-dimensional tensor containing the resulting tokens, shape = [number of input strings, context_length].
+    We return LongTensor when torch version is <1.8.0, since older index_select requires indices to be long.
+    """
+    if isinstance(texts, str):
+        texts = [texts]
+
+    sot_token = _tokenizer.encoder["<|startoftext|>"]
+    eot_token = _tokenizer.encoder["<|endoftext|>"]
+    all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
+    if packaging.version.parse(torch.__version__) < packaging.version.parse("1.8.0"):
+        result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
+    else:
+        result = torch.zeros(len(all_tokens), context_length, dtype=torch.int)
+
+    for i, tokens in enumerate(all_tokens):
+        if len(tokens) > context_length:
+            if truncate:
+                tokens = tokens[:context_length]
+                tokens[-1] = eot_token
+            else:
+                raise RuntimeError(f"Input {texts[i]} is too long for context length {context_length}")
+        result[i, :len(tokens)] = torch.tensor(tokens)
+
+    return result
+
+
+================================================
+FILE: clip/modules/clip_missing_aware_prompt_module.py
+================================================
+import torch
+import torch.nn as nn
+import pytorch_lightning as pl
+import clip.modules.vision_transformer_prompts as vit
+import math
+from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
+from clip.modules import clip_utils, heads, objectives, clip
+import copy
+
+def load_clip_to_cpu(backbone_name, prompt_length, prompt_depth):
+    url = clip._MODELS[backbone_name]
+    model_path = clip._download(url)
+
+    try:
+        # loading JIT archive
+        model = torch.jit.load(model_path, map_location="cpu")#.eval()
+        state_dict = None
+
+    except RuntimeError:
+        state_dict = torch.load(model_path, map_location="cpu")
+    model = vit.build_model(state_dict or model.state_dict(), prompt_length, prompt_depth)
+
+    return model
+
+class TextEncoder(nn.Module):
+    def __init__(self, clip_model):
+        super().__init__()
+        self.transformer = clip_model.transformer
+        self.token_embedding = clip_model.token_embedding
+        self.positional_embedding = clip_model.positional_embedding
+        self.ln_final = clip_model.ln_final
+        self.text_projection = clip_model.text_projection
+        self.dtype = clip_model.dtype
+        self.prompt_length = clip_model.prompt_length
+
+    def forward(self, tokenized_texts, all_prompts_text, missing_type):
+        x = self.token_embedding(tokenized_texts).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        # Pass as the list, as nn.sequential cannot process multiple arguments in the forward pass
+        combined = [x, all_prompts_text, 0, missing_type]  # third argument is the counter which denotes depth of prompt
+        outputs = self.transformer(combined)
+        x = outputs[0][self.prompt_length:]  # extract the x back from here
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), tokenized_texts.argmax(dim=-1)] @ self.text_projection
+
+        return x
+
+def _get_clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+
+class MultiModalPromptLearner(nn.Module):
+    def __init__(self, prompt_length, prompt_depth, clip_model):
+        super().__init__()
+        dtype = clip_model.dtype
+        prompt_length_half = prompt_length//3 # use half length for generating static prompts, and the other for generating dynamic prompts
+        # Default is 1, which is compound shallow prompting
+        self.prompt_depth = prompt_depth  # max=12, but will create 11 such shared prompts
+        self.visual_prompt_complete = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 768, dtype=dtype), std=0.02))
+        self.visual_prompt_missing = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 768, dtype=dtype), std=0.02))
+        self.text_prompt_complete = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 512, dtype=dtype), std=0.02))
+        self.text_prompt_missing = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 512, dtype=dtype), std=0.02))
+        self.common_prompt_complete = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 512, dtype=dtype), std=0.02))
+        self.common_prompt_image = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 512, dtype=dtype), std=0.02))
+        self.common_prompt_text = nn.Parameter(nn.init.normal_(torch.empty(prompt_length_half, 512, dtype=dtype), std=0.02))
+        # Also make corresponding projection layers, for each prompt
+        embed_dim_text = 512
+        embed_dim_image = 768
+        embed_dim = embed_dim_text + embed_dim_image
+        r = 16
+        single_layer = nn.Sequential(
+                nn.Linear(embed_dim, embed_dim//r),
+                nn.GELU(),
+                nn.Linear(embed_dim//r, embed_dim_text),
+                )
+        self.compound_prompt_projections_text = _get_clones(single_layer, self.prompt_depth)
+        self.layernorm_text = nn.ModuleList([torch.nn.LayerNorm(embed_dim) for _ in range(self.prompt_depth)])
+        
+        single_layer = nn.Sequential(
+                nn.Linear(embed_dim, embed_dim//r),
+                nn.GELU(),
+                nn.Linear(embed_dim//r, embed_dim_image),
+                )
+        self.compound_prompt_projections_image = _get_clones(single_layer, self.prompt_depth)
+        self.layernorm_image = nn.ModuleList([torch.nn.LayerNorm(embed_dim) for _ in range(self.prompt_depth)])
+        self.common_prompt_projection_image = nn.Sequential(
+                nn.Linear(embed_dim_text, embed_dim_text//r),
+                nn.GELU(),
+                nn.Linear(embed_dim_text//r, embed_dim_image),
+                )
+        self.common_prompt_projection_text = nn.Sequential(
+                nn.Linear(embed_dim_text, embed_dim_text//r),
+                nn.GELU(),
+                nn.Linear(embed_dim_text//r, embed_dim_text),
+                )
+
+    def forward(self, missing_type):
+
+        # Before returning, need to transform
+        # prompts to 768 for the visual side
+        all_prompts_image = [ [] for _ in range(self.prompt_depth)]   # Prompts of prompt_depth layers
+        all_prompts_text = [ [] for _ in range(self.prompt_depth)]   # Prompts of prompt_depth layers
+        for i in range(len(missing_type)):
+            # set initial prompts for each modality
+            if missing_type[i]==0:  # modality complete
+                initial_prompt_image = self.visual_prompt_complete
+                initial_prompt_text = self.text_prompt_complete
+                common_prompt = self.common_prompt_complete
+            elif missing_type[i]==1:  # missing text 
+                initial_prompt_image = self.visual_prompt_complete
+                initial_prompt_text = self.text_prompt_missing
+                common_prompt = self.common_prompt_image
+            elif missing_type[i]==2:  # missing image 
+                initial_prompt_image = self.visual_prompt_missing
+                initial_prompt_text = self.text_prompt_complete
+                common_prompt = self.common_prompt_text
+            # generate the prompts of the first layer
+            all_prompts_image[0].append(self.compound_prompt_projections_image[0](self.layernorm_image[0](torch.cat([initial_prompt_image, initial_prompt_text], -1))))
+            all_prompts_text[0].append(self.compound_prompt_projections_text[0](self.layernorm_text[0](torch.cat([initial_prompt_image, initial_prompt_text], -1))))
+            # generate the prompts of the rest layers
+            for index in range(1, self.prompt_depth):
+                all_prompts_image[index].append(
+                    self.compound_prompt_projections_image[index](self.layernorm_image[index](torch.cat([all_prompts_image[index-1][-1], all_prompts_text[index-1][-1]], -1))))
+                all_prompts_text[index].append(
+                    self.compound_prompt_projections_text[index](self.layernorm_text[index](torch.cat([all_prompts_image[index-1][-1], all_prompts_text[index-1][-1]], -1))))
+            all_prompts_image[0][i] = torch.cat([
+                    all_prompts_image[0][i], 
+                    self.common_prompt_projection_image(common_prompt)]
+                    ,0)
+            all_prompts_text[0][i] = torch.cat([
+                    all_prompts_text[0][i], 
+                    self.common_prompt_projection_text(common_prompt)]
+                    ,0)
+        # generate the prompts in each layer as a tensor [B, L, C]
+        all_prompts_image = [torch.stack(prompts) for prompts in all_prompts_image]
+        all_prompts_text = [torch.stack(prompts) for prompts in all_prompts_text]
+        return all_prompts_image, all_prompts_text   
+
+class CustomCLIP(nn.Module):
+    def __init__(self, prompt_length, prompt_depth, clip_model):
+        super().__init__()
+        self.prompt_learner = MultiModalPromptLearner(prompt_length, prompt_depth, clip_model)
+        self.image_encoder = clip_model.visual
+        self.text_encoder = TextEncoder(clip_model)
+        self.logit_scale = clip_model.logit_scale
+        self.dtype = clip_model.dtype
+
+    def forward(self, image, text, missing_type):
+        tokenized_texts = torch.stack([clip.tokenize(tx, context_length=77, truncate=True) for tx in text[0]], 0).to(image.get_device()).squeeze(1)  # extract texts from the first key  # [b, 77]
+        #logit_scale = self.logit_scale.exp()
+
+        all_prompts_image, all_prompts_text = self.prompt_learner(missing_type)
+        text_features = self.text_encoder(tokenized_texts, all_prompts_text, missing_type)
+        image_features = self.image_encoder(image.type(self.dtype), all_prompts_image, missing_type)
+        return torch.cat([image_features, text_features], -1)
+
+class CLIPransformerSS(pl.LightningModule):
+    def __init__(self, config):
+        super().__init__()
+        self.save_hyperparameters()
+
+        clip_model = load_clip_to_cpu(config['vit'], config['prompt_length'], config['prompt_depth'])
+
+        print("Building custom CLIP")
+        hidden_size = 512*2
+        self.model = CustomCLIP(config['prompt_length'], config['prompt_depth'], clip_model)
+
+        # ===================== Downstream ===================== #
+        if (
+            self.hparams.config["load_path"] != ""
+            and not self.hparams.config["test_only"]
+            and not self.hparams.config["finetune_first"]
+        ):
+# 
+            ckpt = torch.load(self.hparams.config["load_path"], map_location="cpu")
+            state_dict = ckpt["state_dict"]
+            self.model.load_state_dict(state_dict, strict=False)
+
+        if self.hparams.config["loss_names"]["hatememes"] > 0:
+            cls_num = self.hparams.config["hatememes_class_num"]
+            self.hatememes_classifier = nn.Linear(hidden_size, cls_num)
+            self.hatememes_classifier.apply(objectives.init_weights)
+            
+        if self.hparams.config["loss_names"]["food101"] > 0:
+            cls_num = self.hparams.config["food101_class_num"]
+            self.food101_classifier = nn.Linear(hidden_size, cls_num)
+            self.food101_classifier.apply(objectives.init_weights)               
+            
+        if self.hparams.config["loss_names"]["mmimdb"] > 0:
+            cls_num = self.hparams.config["mmimdb_class_num"]
+            self.mmimdb_classifier = nn.Linear(hidden_size, cls_num)
+            self.mmimdb_classifier.apply(objectives.init_weights)  
+            
+        if self.hparams.config["load_path"] != "" and self.hparams.config["finetune_first"]:
+            ckpt = torch.load(self.hparams.config["load_path"], map_location="cpu")
+            state_dict = ckpt["state_dict"]
+            self.model.load_state_dict(state_dict, strict=False)            
+            print("use pre-finetune model")
+
+        if not self.hparams.config["test_only"]:
+            for name, param in self.model.named_parameters():
+                if "prompt_learner" not in name and "prompt" not in name and 'ln_final' not in name and 'ln_post' not in name and name.split('.')[-1]!='proj':
+                    param.requires_grad_(False)
+
+            # # Double check
+            # enabled = set()
+            # for name, param in self.model.named_parameters():
+            #     if param.requires_grad:
+            #         enabled.add(name)
+            # print(f"Parameters to be updated: {enabled}")
+
+        clip_utils.set_metrics(self)
+        self.current_tasks = list()
+
+        # ===================== load downstream (test_only) ======================
+
+        if self.hparams.config["load_path"] != "" and self.hparams.config["test_only"]:
+            ckpt = torch.load(self.hparams.config["load_path"], map_location="cpu")
+            state_dict = ckpt["state_dict"]
+            self.load_state_dict(state_dict, strict=True)
+        self.records = {}
+
+    def infer(
+        self,
+        batch,
+    ):
+        text = batch["text"]
+        img = batch["image"][0]  # extract the first view (total 1)
+        if self.hparams.config["test_only"]:
+            self.model.eval()
+            if self.hparams.config["loss_names"]["hatememes"] > 0:
+                self.hatememes_classifier.eval()
+            
+            if self.hparams.config["loss_names"]["food101"] > 0:
+                self.food101_classifier.eval()            
+            
+            if self.hparams.config["loss_names"]["mmimdb"] > 0:
+                self.mmimdb_classifier.eval()
+        both_feats = self.model(img, text, batch["missing_type"])  
+        feature_dim = both_feats.shape[1]//2
+        for idx in range(len(img)):
+            if batch["missing_type"][idx] == 0:
+                pass       
+            elif batch["missing_type"][idx] == 1:  # missing text
+                both_feats[idx, feature_dim:].zero_()
+            elif batch["missing_type"][idx] == 2:
+                both_feats[idx, :feature_dim].zero_()
+            
+        ret = {
+            "cls_feats": both_feats,
+        }
+
+        return ret
+
+    def forward(self, batch):
+        ret = dict()
+        if len(self.current_tasks) == 0:
+            ret.update(self.infer(batch))
+            return ret
+
+        # Masked Language Modeling
+        if "mlm" in self.current_tasks:
+            ret.update(objectives.compute_mlm(self, batch))
+
+        # Masked Patch Prediction
+        if "mpp" in self.current_tasks:
+            ret.update(objectives.compute_mpp(self, batch))
+
+        # Image Text Matching
+        if "itm" in self.current_tasks:
+            ret.update(objectives.compute_itm_wpa(self, batch))
+            
+        # Binary classification for Hateful Memes
+        if "hatememes" in self.current_tasks:
+            ret.update(objectives.compute_hatememes(self, batch))
+            
+        # Multi-label classification for MM-IMDb
+        if "mmimdb" in self.current_tasks:
+            ret.update(objectives.compute_mmimdb(self, batch))
+            
+        # Classification for Food101
+        if "food101" in self.current_tasks:
+            ret.update(objectives.compute_food101(self, batch))              
+
+        return ret
+
+    def training_step(self, batch, batch_idx):
+        clip_utils.set_task(self)
+        output = self(batch)
+        total_loss = sum([v for k, v in output.items() if "loss" in k])
+
+        return total_loss
+
+    def training_epoch_end(self, outs):
+        clip_utils.epoch_wrapup(self)
+
+    def validation_step(self, batch, batch_idx):
+        clip_utils.set_task(self)
+        output = self(batch)
+
+    def validation_epoch_end(self, outs):
+        clip_utils.epoch_wrapup(self)
+#         print('missing_img:', self.missing_img_prompt[0,0:3,0:8])
+#         print('missing_text:', self.missing_text_prompt[0,0:3,0:8])
+#         print('complete:', self.complete_prompt[0,0:3,0:8])
+
+    def test_step(self, batch, batch_idx):
+        clip_utils.set_task(self)
+        output = self(batch)
+        ret = dict()
+
+        if self.hparams.config["loss_names"]["vqa"] > 0:
+            ret.update(objectives.vqa_test_step(self, batch, output))
+
+        return ret
+
+    def test_epoch_end(self, outs):
+        model_name = self.hparams.config["load_path"].split("/")[-1][:-5]
+
+        if self.hparams.config["loss_names"]["vqa"] > 0:
+            objectives.vqa_test_wrapup(outs, model_name)
+        clip_utils.epoch_wrapup(self)
+
+    def configure_optimizers(self):
+        return clip_utils.set_schedule(self)
+
+
+
+================================================
+FILE: clip/modules/clip_utils.py
+================================================
+import torch
+import random
+
+from transformers.optimization import AdamW
+from transformers import (
+    get_polynomial_decay_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
+)
+from clip.modules.dist_utils import all_gather
+from clip.modules.objectives import compute_irtr_recall
+from clip.gadgets.my_metrics import Accuracy, VQAScore, Scalar, F1_Score, AUROC, Scalar2, check
+
+
+def set_metrics(pl_module):
+    for split in ["train", "val"]:
+        for k, v in pl_module.hparams.config["loss_names"].items():
+            if v < 1:
+                continue
+            if k == "vqa":
+                setattr(pl_module, f"{split}_vqa_score", VQAScore())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+            elif k == "mmimdb":
+                setattr(pl_module, f"{split}_{k}_F1_scores", F1_Score())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+                
+            elif k == "hatememes":
+                setattr(pl_module, f"{split}_{k}_accuracy", Accuracy())
+                setattr(pl_module, f"{split}_{k}_AUROC", AUROC())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+                
+            elif k == "food101":
+                setattr(pl_module, f"{split}_{k}_accuracy", Accuracy())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())       
+                
+            elif k == "nlvr2":
+                if split == "train":
+                    setattr(pl_module, f"train_{k}_accuracy", Accuracy())
+                    setattr(pl_module, f"train_{k}_loss", Scalar())
+                else:
+                    setattr(pl_module, f"dev_{k}_accuracy", Accuracy())
+                    setattr(pl_module, f"dev_{k}_loss", Scalar())
+                    setattr(pl_module, f"test_{k}_accuracy", Accuracy())
+                    setattr(pl_module, f"test_{k}_loss", Scalar())
+            elif k == "irtr":
+                setattr(pl_module, f"{split}_irtr_loss", Scalar())
+            elif k == "mppd" or k == "mpfr":
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+            elif k == "itm":
+                setattr(pl_module, f"{split}_{k}_accuracy", Accuracy())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+                setattr(pl_module, f"{split}_{k}_wpa_loss", Scalar())
+            else:
+                setattr(pl_module, f"{split}_{k}_accuracy", Accuracy())
+                setattr(pl_module, f"{split}_{k}_loss", Scalar())
+
+def test_ablation(pl_module, loss_name, res):
+    test_ratio = pl_module.hparams.config['test_ratio']
+    exp_name = pl_module.hparams.config["test_exp_name"]
+    test_type = pl_module.hparams.config["test_type"]       
+    records = f'missing ratio: {test_ratio}, ' + res
+    record_file = f'./records/{loss_name}/{loss_name}_{exp_name}_on_missing_{test_type}'
+    with open(record_file, 'a+') as f:
+        f.write(records+'\n')
+                
+def epoch_wrapup(pl_module):
+    phase = "train" if pl_module.training else "val"
+    the_metric = 0
+
+    if pl_module.hparams.config["get_recall_metric"] and not pl_module.training:
+        (ir_r1, ir_r5, ir_r10, tr_r1, tr_r5, tr_r10) = compute_irtr_recall(pl_module)
+        print((ir_r1, ir_r5, ir_r10, tr_r1, tr_r5, tr_r10), pl_module.global_step)
+        pl_module.logger.experiment.add_scalar(
+            "recalls/ir_r1", ir_r1, pl_module.global_step
+        )
+        pl_module.logger.experiment.add_scalar(
+            "recalls/ir_r5", ir_r5, pl_module.global_step
+        )
+        pl_module.logger.experiment.add_scalar(
+            "recalls/ir_r10", ir_r10, pl_module.global_step
+        )
+        pl_module.logger.experiment.add_scalar(
+            "recalls/tr_r1", tr_r1, pl_module.global_step
+        )
+        pl_module.logger.experiment.add_scalar(
+            "recalls/tr_r5", tr_r5, pl_module.global_step
+        )
+        pl_module.logger.experiment.add_scalar(
+            "recalls/tr_r10", tr_r10, pl_module.global_step
+        )
+        the_metric += ir_r1.item() + tr_r1.item()
+
+    for loss_name, v in pl_module.hparams.config["loss_names"].items():
+        if v < 1:
+            continue
+
+        value = 0
+
+        if loss_name == "vqa":
+            value = getattr(pl_module, f"{phase}_{loss_name}_score").compute()
+            pl_module.log(f"{loss_name}/{phase}/score_epoch", value)
+            getattr(pl_module, f"{phase}_{loss_name}_score").reset()
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()
+            
+        elif loss_name == "hatememes":
+            value2 = getattr(pl_module, f"{phase}_{loss_name}_accuracy").compute()
+            pl_module.log(f"{loss_name}/{phase}/accuracy_epoch", value2)       
+            getattr(pl_module, f"{phase}_{loss_name}_accuracy").reset()
+            value = getattr(pl_module, f"{phase}_{loss_name}_AUROC").compute()
+            pl_module.log(f"{loss_name}/{phase}/AUROC_epoch", value)            
+            getattr(pl_module, f"{phase}_{loss_name}_AUROC").reset()
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()      
+            
+            if pl_module.hparams.config["test_exp_name"] is not None:
+                res = 'AUROC: {0:.2f}, Accuracy: {1:.2f}'.format(100*value, 100*value2)
+                test_ablation(pl_module, loss_name, res)
+            
+        elif loss_name == "food101":
+            value = getattr(pl_module, f"{phase}_{loss_name}_accuracy").compute()
+            pl_module.log(f"{loss_name}/{phase}/accuracy_epoch", value)       
+            getattr(pl_module, f"{phase}_{loss_name}_accuracy").reset()
+
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()   
+            
+            if pl_module.hparams.config["test_exp_name"] is not None:
+                res = 'Accuracy: {0:.2f}'.format(100*value)
+                test_ablation(pl_module, loss_name, res)            
+            
+        elif loss_name == "mmimdb":
+            values = getattr(pl_module, f"{phase}_{loss_name}_F1_scores").compute()
+            value = values[1]
+            pl_module.log(f"{loss_name}/{phase}/F1_Micro_epoch", values[0])
+            pl_module.log(f"{loss_name}/{phase}/F1_Macro_epoch", values[1])
+            pl_module.log(f"{loss_name}/{phase}/F1_Samples_epoch", values[2])
+            pl_module.log(f"{loss_name}/{phase}/F1_Weighted_epoch", values[3])
+            getattr(pl_module, f"{phase}_{loss_name}_F1_scores").reset()            
+            
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()
+            
+            if pl_module.hparams.config["test_exp_name"] is not None:
+                res = 'F1-Macro: {0:.2f}, F1-Micro: {1:.2f}, F1-Weighted: {2:.2f}, F1-Sample: {3:.2f}'.format(100*values[1], 100*values[0], 100*values[2], 100*values[3])
+                test_ablation(pl_module, loss_name, res)              
+            
+        elif loss_name == "nlvr2":
+            if phase == "train":
+                value = getattr(pl_module, f"train_{loss_name}_accuracy").compute()
+                pl_module.log(f"{loss_name}/train/accuracy_epoch", value)
+                getattr(pl_module, f"train_{loss_name}_accuracy").reset()
+                pl_module.log(
+                    f"{loss_name}/train/loss_epoch",
+                    getattr(pl_module, f"train_{loss_name}_loss").compute(),
+                )
+                getattr(pl_module, f"train_{loss_name}_loss").reset()
+            else:
+                value = getattr(pl_module, f"dev_{loss_name}_accuracy").compute()
+                pl_module.log(f"{loss_name}/dev/accuracy_epoch", value)
+                getattr(pl_module, f"dev_{loss_name}_accuracy").reset()
+                pl_module.log(
+                    f"{loss_name}/dev/loss_epoch",
+                    getattr(pl_module, f"dev_{loss_name}_loss").compute(),
+                )
+                getattr(pl_module, f"dev_{loss_name}_loss").reset()
+
+                value = getattr(pl_module, f"test_{loss_name}_accuracy").compute()
+                pl_module.log(f"{loss_name}/test/accuracy_epoch", value)
+                getattr(pl_module, f"test_{loss_name}_accuracy").reset()
+                pl_module.log(
+                    f"{loss_name}/test/loss_epoch",
+                    getattr(pl_module, f"test_{loss_name}_loss").compute(),
+                )
+                getattr(pl_module, f"test_{loss_name}_loss").reset()
+        elif loss_name == "irtr":
+            pl_module.log(
+                f"{loss_name}/{phase}/irtr_loss_epoch",
+                getattr(pl_module, f"{phase}_irtr_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_irtr_loss").reset()
+        elif loss_name == "mppd" or loss_name == "mpfr":
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()
+        elif loss_name == "itm":
+            value = getattr(pl_module, f"{phase}_{loss_name}_accuracy").compute()
+            pl_module.log(f"{loss_name}/{phase}/accuracy_epoch", value)
+            getattr(pl_module, f"{phase}_{loss_name}_accuracy").reset()
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()
+            pl_module.log(
+                f"{loss_name}/{phase}/wpa_loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_wpa_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_wpa_loss").reset()
+        else:
+            value = getattr(pl_module, f"{phase}_{loss_name}_accuracy").compute()
+            pl_module.log(f"{loss_name}/{phase}/accuracy_epoch", value)
+            getattr(pl_module, f"{phase}_{loss_name}_accuracy").reset()
+            pl_module.log(
+                f"{loss_name}/{phase}/loss_epoch",
+                getattr(pl_module, f"{phase}_{loss_name}_loss").compute(),
+            )
+            getattr(pl_module, f"{phase}_{loss_name}_loss").reset()
+
+        the_metric += value
+
+    pl_module.log(f"{phase}/the_metric", the_metric)
+
+
+def check_non_acc_grad(pl_module):
+    if pl_module.token_type_embeddings.weight.grad is None:
+        return True
+    else:
+        grad = pl_module.token_type_embeddings.weight.grad
+        return (grad.sum() == 0).item()
+
+
+def set_task(pl_module):
+    pl_module.current_tasks = [
+        k for k, v in pl_module.hparams.config["loss_names"].items() if v >= 1
+    ]
+    return
+
+
+def set_schedule(pl_module):
+    lr = pl_module.hparams.config["learning_rate"]
+    wd = pl_module.hparams.config["weight_decay"]
+    
+    no_decay = [
+        "bias",
+        "LayerNorm.bias",
+        "LayerNorm.weight",
+        "norm.bias",
+        "norm.weight",
+        "norm1.bias",
+        "norm1.weight",
+        "norm2.bias",
+        "norm2.weight",
+    ]
+    head_names = ["vqa_classifier", "mmimdb_classifier", "food101_classifier", "hatememes_classifier", "nlvr2_classifier"]
+    prompt_name = "prompt"
+    lr_mult = pl_module.hparams.config["lr_mult"]
+    end_lr = pl_module.hparams.config["end_lr"]
+    decay_power = pl_module.hparams.config["decay_power"]
+    optim_type = pl_module.hparams.config["optim_type"]
+
+    names = [n for n, p in pl_module.named_parameters()]
+
+
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p
+                for n, p in pl_module.named_parameters()
+                if not any(nd in n for nd in no_decay)
+                and not any(bb in n for bb in head_names)
+            ],
+            "weight_decay": wd,
+            "lr": lr,
+        },            
+        {
+            "params": [
+                p
+                for n, p in pl_module.named_parameters()
+                if any(nd in n for nd in no_decay)
+                and not any(bb in n for bb in head_names)
+            ],
+            "weight_decay": 0.0,
+            "lr": lr,
+        },
+        {
+            "params": [
+                p
+                for n, p in pl_module.named_parameters()
+                if not any(nd in n for nd in no_decay)
+                and any(bb in n for bb in head_names)
+            ],
+            "weight_decay": wd,
+            "lr": lr * lr_mult,
+        },
+        {
+            "params": [
+                p
+                for n, p in pl_module.named_parameters()
+                if any(nd in n for nd in no_decay) and any(bb in n for bb in head_names)
+            ],
+            "weight_decay": 0.0,
+            "lr": lr * lr_mult,
+        },
+    ]
+
+    if optim_type == "adamw":
+        optimizer = AdamW(
+            optimizer_grouped_parameters, lr=lr, eps=1e-8, betas=(0.9, 0.98)
+        )
+    elif optim_type == "adam":
+        optimizer = torch.optim.Adam(optimizer_grouped_parameters, lr=lr)
+    elif optim_type == "sgd":
+        optimizer = torch.optim.SGD(optimizer_grouped_parameters, lr=lr, momentum=0.9)
+
+    if pl_module.trainer.max_steps is None:
+        max_steps = (
+            len(pl_module.trainer.datamodule.train_dataloader())
+            * pl_module.trainer.max_epochs
+            // pl_module.trainer.accumulate_grad_batches
+        )
+    else:
+        max_steps = pl_module.trainer.max_steps
+
+    warmup_steps = pl_module.hparams.config["warmup_steps"]
+    if isinstance(pl_module.hparams.config["warmup_steps"], float):
+        warmup_steps = int(max_steps * warmup_steps)
+
+    if decay_power == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=max_steps,
+        )
+    else:
+        scheduler = get_polynomial_decay_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=max_steps,
+            lr_end=end_lr,
+            power=decay_power,
+        )
+
+    sched = {"scheduler": scheduler, "interval": "step"}
+
+    return (
+        [optimizer],
+        [sched],
+    )
+
+
+
+================================================
+FILE: clip/modules/dist_utils.py
+================================================
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+"""
+This file contains primitives for multi-gpu communication.
+This is useful when doing distributed training.
+"""
+
+import functools
+import logging
+import numpy as np
+import pickle
+import torch
+import torch.distributed as dist
+
+import torch
+
+_LOCAL_PROCESS_GROUP = None
+"""
+A torch process group which only includes processes that on the same machine as the current process.
+This variable is set when processes are spawned by `launch()` in "engine/launch.py".
+"""
+
+
+def get_world_size() -> int:
+    if not dist.is_available():
+        return 1
+    if not dist.is_initialized():
+        return 1
+    return dist.get_world_size()
+
+
+def get_rank() -> int:
+    if not dist.is_available():
+        return 0
+    if not dist.is_initialized():
+        return 0
+    return dist.get_rank()
+
+
+def get_local_rank() -> int:
+    """
+    Returns:
+        The rank of the current process within the local (per-machine) process group.
+    """
+    if not dist.is_available():
+        return 0
+    if not dist.is_initialized():
+        return 0
+    assert _LOCAL_PROCESS_GROUP is not None
+    return dist.get_rank(group=_LOCAL_PROCESS_GROUP)
+
+
+def get_local_size() -> int:
+    """
+    Returns:
+        The size of the per-machine process group,
+        i.e. the number of processes per machine.
+    """
+    if not dist.is_available():
+        return 1
+    if not dist.is_initialized():
+        return 1
+    return dist.get_world_size(group=_LOCAL_PROCESS_GROUP)
+
+
+def is_main_process() -> bool:
+    return get_rank() == 0
+
+
+def synchronize():
+    """
+    Helper function to synchronize (barrier) among all processes when
+    using distributed training
+    """
+    if not dist.is_available():
+        return
+    if not dist.is_initialized():
+        return
+    world_size = dist.get_world_size()
+    if world_size == 1:
+        return
+    dist.barrier()
+
+
+@functools.lru_cache()
+def _get_global_gloo_group():
+    """
+    Return a process group based on gloo backend, containing all the ranks
+    The result is cached.
+    """
+    if dist.get_backend() == "nccl":
+        return dist.new_group(backend="gloo")
+    else:
+        return dist.group.WORLD
+
+
+def _serialize_to_tensor(data, group):
+    backend = dist.get_backend(group)
+    assert backend in ["gloo", "nccl"]
+    device = torch.device("cpu" if backend == "gloo" else "cuda")
+
+    buffer = pickle.dumps(data)
+    if len(buffer) > 1024 ** 3:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Rank {} trying to all-gather {:.2f} GB of data on device {}".format(
+                get_rank(), len(buffer) / (1024 ** 3), device
+            )
+        )
+    storage = torch.ByteStorage.from_buffer(buffer)
+    tensor = torch.ByteTensor(storage).to(device=device)
+    return tensor
+
+
+def _pad_to_largest_tensor(tensor, group):
+    """
+    Returns:
+        list[int]: size of the tensor, on each rank
+        Tensor: padded tensor that has the max size
+    """
+    world_size = dist.get_world_size(group=group)
+    assert (
+        world_size >= 1
+    ), "comm.gather/all_gather must be called from ranks within the given group!"
+    local_size = torch.tensor([tensor.numel()], dtype=torch.int64, device=tensor.device)
+    size_list = [
+        torch.zeros([1], dtype=torch.int64, device=tensor.device)
+        for _ in range(world_size)
+    ]
+    dist.all_gather(size_list, local_size, group=group)
+    size_list = [int(size.item()) for size in size_list]
+
+    max_size = max(size_list)
+
+    # we pad the tensor because torch all_gather does not support
+    # gathering tensors of different shapes
+    if local_size != max_size:
+        padding = torch.zeros(
+            (max_size - local_size,), dtype=torch.uint8, device=tensor.device
+        )
+        tensor = torch.cat((tensor, padding), dim=0)
+    return size_list, tensor
+
+
+def all_gather(data, group=None):
+    """
+    Run all_gather on arbitrary picklable data (not necessarily tensors).
+
+    Args:
+        data: any picklable object
+        group: a torch process group. By default, will use a group which
+            contains all ranks on gloo backend.
+
+    Returns:
+        list[data]: list of data gathered from each rank
+    """
+    if get_world_size() == 1:
+        return [data]
+    if group is None:
+        group = _get_global_gloo_group()
+    if dist.get_world_size(group) == 1:
+        return [data]
+
+    tensor = _serialize_to_tensor(data, group)
+
+    size_list, tensor = _pad_to_largest_tensor(tensor, group)
+    max_size = max(size_list)
+
+    # receiving Tensor from all ranks
+    tensor_list = [
+        torch.empty((max_size,), dtype=torch.uint8, device=tensor.device)
+        for _ in size_list
+    ]
+    dist.all_gather(tensor_list, tensor, group=group)
+
+    data_list = []
+    for size, tensor in zip(size_list, tensor_list):
+        buffer = tensor.cpu().numpy().tobytes()[:size]
+        data_list.append(pickle.loads(buffer))
+
+    return data_list
+
+
+def gather(data, dst=0, group=None):
+    """
+    Run gather on arbitrary picklable data (not necessarily tensors).
+
+    Args:
+        data: any picklable object
+        dst (int): destination rank
+        group: a torch process group. By default, will use a group which
+            contains all ranks on gloo backend.
+
+    Returns:
+        list[data]: on dst, a list of data gathered from each rank. Otherwise,
+            an empty list.
+    """
+    if get_world_size() == 1:
+        return [data]
+    if group is None:
+        group = _get_global_gloo_group()
+    if dist.get_world_size(group=group) == 1:
+        return [data]
+    rank = dist.get_rank(group=group)
+
+    tensor = _serialize_to_tensor(data, group)
+    size_list, tensor = _pad_to_largest_tensor(tensor, group)
+
+    # receiving Tensor from all ranks
+    if rank == dst:
+        max_size = max(size_list)
+        tensor_list = [
+            torch.empty((max_size,), dtype=torch.uint8, device=tensor.device)
+            for _ in size_list
+        ]
+        dist.gather(tensor, tensor_list, dst=dst, group=group)
+
+        data_list = []
+        for size, tensor in zip(size_list, tensor_list):
+            buffer = tensor.cpu().numpy().tobytes()[:size]
+            data_list.append(pickle.loads(buffer))
+        return data_list
+    else:
+        dist.gather(tensor, [], dst=dst, group=group)
+        return []
+
+
+def shared_random_seed():
+    """
+    Returns:
+        int: a random number that is the same across all workers.
+            If workers need a shared RNG, they can use this shared seed to
+            create one.
+
+    All workers must call this function, otherwise it will deadlock.
+    """
+    ints = np.random.randint(2 ** 31)
+    all_ints = all_gather(ints)
+    return all_ints[0]
+
+
+def reduce_dict(input_dict, average=True):
+    """
+    Reduce the values in the dictionary from all processes so that process with rank
+    0 has the reduced results.
+
+    Args:
+        input_dict (dict): inputs to be reduced. All the values must be scalar CUDA Tensor.
+        average (bool): whether to do average or sum
+
+    Returns:
+        a dict with the same keys as input_dict, after reduction.
+    """
+    world_size = get_world_size()
+    if world_size < 2:
+        return input_dict
+    with torch.no_grad():
+        names = []
+        values = []
+        # sort the keys so that they are consistent across processes
+        for k in sorted(input_dict.keys()):
+            names.append(k)
+            values.append(input_dict[k])
+        values = torch.stack(values, dim=0)
+        dist.reduce(values, dst=0)
+        if dist.get_rank() == 0 and average:
+            # only main process gets accumulated, so only divide by
+            # world_size in this case
+            values /= world_size
+        reduced_dict = {k: v for k, v in zip(names, values)}
+    return reduced_dict
+
+
+
+================================================
+FILE: clip/modules/heads.py
+================================================
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from transformers.models.bert.modeling_bert import BertPredictionHeadTransform
+
+
+class Pooler(nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.dense = nn.Linear(hidden_size, hidden_size)
+        self.activation = nn.Tanh()
+
+    def forward(self, hidden_states):
+        first_token_tensor = hidden_states
+        pooled_output = self.dense(first_token_tensor)
+        pooled_output = self.activation(pooled_output)
+        return pooled_output
+
+
+class ITMHead(nn.Module):
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.fc = nn.Linear(hidden_size, 2)
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+class MLMHead(nn.Module):
+    def __init__(self, config, weight=None):
+        super().__init__()
+        self.transform = BertPredictionHeadTransform(config)
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        if weight is not None:
+            self.decoder.weight = weight
+
+    def forward(self, x):
+        x = self.transform(x)
+        x = self.decoder(x) + self.bias
+        return x
+
+
+class MPPHead(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.transform = BertPredictionHeadTransform(config)
+        self.decoder = nn.Linear(config.hidden_size, 256 * 3)
+
+    def forward(self, x):
+        x = self.transform(x)
+        x = self.decoder(x)
+        return x
+
+
+
+================================================
+FILE: clip/modules/objectives.py
+================================================
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import os
+import glob
+import json
+import tqdm
+import functools
+import random
+
+from torch.utils.data.distributed import DistributedSampler
+from einops import rearrange
+
+from clip.modules.dist_utils import all_gather
+
+
+def cost_matrix_cosine(x, y, eps=1e-5):
+    """Compute cosine distnace across every pairs of x, y (batched)
+    [B, L_x, D] [B, L_y, D] -> [B, Lx, Ly]"""
+    assert x.dim() == y.dim()
+    assert x.size(0) == y.size(0)
+    assert x.size(2) == y.size(2)
+    x_norm = F.normalize(x, p=2, dim=-1, eps=eps)
+    y_norm = F.normalize(y, p=2, dim=-1, eps=eps)
+    cosine_sim = x_norm.matmul(y_norm.transpose(1, 2))
+    cosine_dist = 1 - cosine_sim
+    return cosine_dist
+
+
+def trace(x):
+    """ compute trace of input tensor (batched) """
+    b, m, n = x.size()
+    assert m == n
+    mask = torch.eye(n, dtype=torch.bool, device=x.device).unsqueeze(0).expand_as(x)
+    trace = x.masked_select(mask).contiguous().view(b, n).sum(dim=-1, keepdim=False)
+    return trace
+
+
+@torch.no_grad()
+def ipot(C, x_len, x_pad, y_len, y_pad, joint_pad, beta, iteration, k):
+    """ [B, M, N], [B], [B, M], [B], [B, N], [B, M, N]"""
+    b, m, n = C.size()
+    sigma = torch.ones(b, m, dtype=C.dtype, device=C.device) / x_len.unsqueeze(1)
+    T = torch.ones(b, n, m, dtype=C.dtype, device=C.device)
+    A = torch.exp(-C.transpose(1, 2) / beta)
+
+    # mask padded positions
+    sigma.masked_fill_(x_pad, 0)
+    joint_pad = joint_pad.transpose(1, 2)
+    T.masked_fill_(joint_pad, 0)
+    A.masked_fill_(joint_pad, 0)
+
+    # broadcastable lengths
+    x_len = x_len.unsqueeze(1).unsqueeze(2)
+    y_len = y_len.unsqueeze(1).unsqueeze(2)
+
+    # mask to zero out padding in delta and sigma
+    x_mask = (x_pad.to(C.dtype) * 1e4).unsqueeze(1)
+    y_mask = (y_pad.to(C.dtype) * 1e4).unsqueeze(1)
+
+    for _ in range(iteration):
+        Q = A * T  # bs * n * m
+        sigma = sigma.view(b, m, 1)
+        for _ in range(k):
+            delta = 1 / (y_len * Q.matmul(sigma).view(b, 1, n) + y_mask)
+            sigma = 1 / (x_len * delta.matmul(Q) + x_mask)
+        T = delta.view(b, n, 1) * Q * sigma
+    T.masked_fill_(joint_pad, 0)
+    return T
+
+
+def optimal_transport_dist(
+    txt_emb, img_emb, txt_pad, img_pad, beta=0.5, iteration=50, k=1
+):
+    """ [B, M, D], [B, N, D], [B, M], [B, N]"""
+    cost = cost_matrix_cosine(txt_emb, img_emb)
+    # mask the padded inputs
+    joint_pad = txt_pad.unsqueeze(-1) | img_pad.unsqueeze(-2)
+    cost.masked_fill_(joint_pad, 0)
+
+    txt_len = (txt_pad.size(1) - txt_pad.sum(dim=1, keepdim=False)).to(dtype=cost.dtype)
+    img_len = (img_pad.size(1) - img_pad.sum(dim=1, keepdim=False)).to(dtype=cost.dtype)
+
+    T = ipot(
+        cost.detach(), txt_len, txt_pad, img_len, img_pad, joint_pad, beta, iteration, k
+    )
+    distance = trace(cost.matmul(T.detach()))
+    return distance
+
+
+def compute_mlm(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=True, mask_image=False)
+    mlm_logits = pl_module.mlm_score(infer["text_feats"])
+    mlm_labels = infer["text_labels"]
+
+    mlm_loss = 0.1*F.cross_entropy(
+        mlm_logits.view(-1, pl_module.hparams.config["vocab_size"]),
+        mlm_labels.view(-1),
+        ignore_index=-100,
+    )
+
+    ret = {
+        "mlm_loss": mlm_loss,
+        "mlm_logits": mlm_logits,
+        "mlm_labels": mlm_labels,
+        "mlm_ids": infer["text_ids"],
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_mlm_loss")(ret["mlm_loss"])
+    acc = getattr(pl_module, f"{phase}_mlm_accuracy")(
+        ret["mlm_logits"], ret["mlm_labels"]
+    )
+    pl_module.log(f"mlm/{phase}/loss", loss)
+    pl_module.log(f"mlm/{phase}/accuracy", acc)
+
+    return ret
+
+
+def compute_mpp(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=True)
+    mpp_logits = pl_module.mpp_score(infer["image_feats"])
+    mpp_logits = torch.stack(
+        [
+            mpp_logits[:, :, 0:256],
+            mpp_logits[:, :, 256:512],
+            mpp_logits[:, :, 512:768],
+        ],
+        dim=2,
+    )
+    mpp_labels = infer["image_labels"]
+
+    mpp_loss = 0.1*F.cross_entropy(
+        mpp_logits.view(-1, 256),
+        mpp_labels.view(-1),
+        ignore_index=-100,
+    )
+
+    ret = {
+        "mpp_loss": mpp_loss,
+        "mpp_logits": mpp_logits,
+        "mpp_labels": mpp_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_mpp_loss")(ret["mpp_loss"])
+    acc = getattr(pl_module, f"{phase}_mpp_accuracy")(
+        ret["mpp_logits"], ret["mpp_labels"]
+    )
+    pl_module.log(f"mpp/{phase}/loss", loss)
+    pl_module.log(f"mpp/{phase}/accuracy", acc)
+
+    return ret
+
+
+def compute_mppd(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=True)
+    mppd_logits = pl_module.mppd_score(infer["image_feats"])
+    mppd_labels = infer["image_labels_mppd"]
+    filter_to_train = infer["image_labels"].float().mean(dim=-1) != -100
+
+    labels = mppd_labels[filter_to_train]
+    logits = mppd_logits[filter_to_train]
+    mppd_loss = 0.1*F.mse_loss(logits, labels)
+
+    ret = {
+        "mppd_loss": mppd_loss,
+        "mppd_logits": mppd_logits,
+        "mppd_labels": mppd_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_mppd_loss")(ret["mppd_loss"])
+    pl_module.log(f"mppd/{phase}/loss", loss)
+
+    return ret
+
+
+def compute_mpfr(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=True)
+    mpfr_logits = pl_module.mpfr_score(infer["image_feats"])
+    mpfr_labels = infer["image_labels_mpfr"]
+    filter_to_train = infer["image_labels"].float().mean(dim=-1) != -100
+
+    labels = mpfr_labels[filter_to_train]
+    logits = mpfr_logits[filter_to_train]
+    mpfr_loss = F.mse_loss(logits, labels)
+
+    ret = {
+        "mpfr_loss": mpfr_loss,
+        "mpfr_logits": mpfr_logits,
+        "mpfr_labels": mpfr_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_mpfr_loss")(ret["mpfr_loss"])
+    pl_module.log(f"mpfr/{phase}/loss", loss)
+
+    return ret
+
+
+def compute_itm_wpa(pl_module, batch):
+    pos_len = len(batch["text"]) // 2
+    neg_len = len(batch["text"]) - pos_len
+    itm_labels = torch.cat([torch.ones(pos_len), torch.zeros(neg_len)]).to(
+        pl_module.device
+    )
+    itm_labels = itm_labels[torch.randperm(itm_labels.size(0))]
+
+    itm_images = [
+        torch.stack(
+            [
+                ti if itm_labels[i] == 1 else fi
+                for i, (ti, fi) in enumerate(zip(bti, bfi))
+            ]
+        )
+        for bti, bfi in zip(batch["image"], batch["false_image_0"])
+    ]
+
+    batch = {k: v for k, v in batch.items()}
+    batch["image"] = itm_images
+
+    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+
+    with torch.cuda.amp.autocast(enabled=False):
+        txt_emb, img_emb = infer["text_feats"], infer["image_feats"]
+        txt_mask, img_mask = infer["text_masks"].bool(), infer["image_masks"].bool()
+        for i, _len in enumerate(txt_mask.sum(dim=1)):
+            txt_mask[i, _len - 1] = False
+        txt_mask[:, 0] = False
+        img_mask[:, 0] = False
+        if "deit" in pl_module.hparams.config["vit"]:
+            img_mask[:, 1] = False
+        txt_pad, img_pad = ~txt_mask, ~img_mask
+
+        cost = cost_matrix_cosine(txt_emb.float(), img_emb.float())
+        joint_pad = txt_pad.unsqueeze(-1) | img_pad.unsqueeze(-2)
+        cost.masked_fill_(joint_pad, 0)
+
+        txt_len = (txt_pad.size(1) - txt_pad.sum(dim=1, keepdim=False)).to(
+            dtype=cost.dtype
+        )
+        img_len = (img_pad.size(1) - img_pad.sum(dim=1, keepdim=False)).to(
+            dtype=cost.dtype
+        )
+        T = ipot(
+            cost.detach(), txt_len, txt_pad, img_len, img_pad, joint_pad, 0.5, 50, 1
+        )
+        distance = trace(cost.matmul(T.detach()))
+
+    dist_pos = distance.masked_select(itm_labels == 1)
+    dist_neg = distance.masked_select(itm_labels == 0)
+    ot_loss = (dist_pos.sum() - dist_neg.sum()) / (dist_pos.size(0) + dist_neg.size(0))
+
+    itm_logits = pl_module.itm_score(infer["cls_feats"])
+    itm_loss = F.cross_entropy(itm_logits, itm_labels.long())
+
+    ret = {
+        "itm_loss": itm_loss,
+        "itm_wpa_loss": 0.1 * ot_loss,
+        "itm_logits": itm_logits,
+        "itm_labels": itm_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_itm_loss")(ret["itm_loss"])
+    wpa_loss = getattr(pl_module, f"{phase}_itm_wpa_loss")(ret["itm_wpa_loss"])
+    acc = getattr(pl_module, f"{phase}_itm_accuracy")(
+        ret["itm_logits"], ret["itm_labels"]
+    )
+    pl_module.log(f"itm/{phase}/loss", loss)
+    pl_module.log(f"itm/{phase}/wpa_loss", wpa_loss)
+    pl_module.log(f"itm/{phase}/accuracy", acc)
+
+    return ret
+
+def compute_mmimdb(pl_module, batch):
+    phase = "train" if pl_module.training else "val"
+    if phase == "train":
+        infer = pl_module.infer(batch)
+    else:
+        infer = pl_module.infer(batch)
+
+    imgcls_logits = pl_module.mmimdb_classifier(infer["cls_feats"])
+    imgcls_labels = batch["label"]
+    imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).float()
+    imgcls_loss = F.binary_cross_entropy_with_logits(imgcls_logits, imgcls_labels)
+
+    ret = {
+        "mmimdb_loss": imgcls_loss,
+        "mmimdb_logits": imgcls_logits,
+        "mmimdb_labels": imgcls_labels,
+    }
+
+    loss = getattr(pl_module, f"{phase}_mmimdb_loss")(ret["mmimdb_loss"])
+    
+    f1_scores = getattr(pl_module, f"{phase}_mmimdb_F1_scores")(
+        ret["mmimdb_logits"], ret["mmimdb_labels"]
+    )
+    pl_module.log(f"mmimdb/{phase}/loss", loss)
+
+    return ret
+
+def compute_hatememes(pl_module, batch):
+    phase = "train" if pl_module.training else "val"
+    if phase == "train":
+        infer = pl_module.infer(batch)
+    else:
+        infer = pl_module.infer(batch)
+
+    imgcls_logits = pl_module.hatememes_classifier(infer["cls_feats"])
+
+    imgcls_labels = batch["label"]
+#     imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).float().view(-1,1)
+#     imgcls_loss = F.binary_cross_entropy_with_logits(imgcls_logits, imgcls_labels)
+    imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).long()
+    imgcls_loss = F.cross_entropy(imgcls_logits, imgcls_labels)
+
+    ret = {
+        "hatememes_loss": imgcls_loss,
+        "hatememes_logits": imgcls_logits,
+        "hatememes_labels": imgcls_labels,
+    }
+
+    loss = getattr(pl_module, f"{phase}_hatememes_loss")(ret["hatememes_loss"])
+    acc = getattr(pl_module, f"{phase}_hatememes_accuracy")(
+        ret["hatememes_logits"], ret["hatememes_labels"]
+    )
+    auroc = getattr(pl_module, f"{phase}_hatememes_AUROC")(
+        ret["hatememes_logits"], ret["hatememes_labels"]
+    )    
+    pl_module.log(f"hatememes/{phase}/loss", loss)
+
+    return ret
+
+def compute_food101(pl_module, batch):
+    phase = "train" if pl_module.training else "val"
+    if phase == "train":
+        infer = pl_module.infer(batch)
+    else:
+        infer = pl_module.infer(batch)
+
+    imgcls_logits = pl_module.food101_classifier(infer["cls_feats"])
+
+    imgcls_labels = batch["label"]
+    imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).long()
+    imgcls_loss = F.cross_entropy(imgcls_logits, imgcls_labels)
+
+    ret = {
+        "food101_loss": imgcls_loss,
+        "food101_logits": imgcls_logits,
+        "food101_labels": imgcls_labels,
+    }
+
+    loss = getattr(pl_module, f"{phase}_food101_loss")(ret["food101_loss"])
+    acc = getattr(pl_module, f"{phase}_food101_accuracy")(
+        ret["food101_logits"], ret["food101_labels"]
+    )
+    pl_module.log(f"food101/{phase}/loss", loss)
+
+    return ret
+
+
+def compute_imgcls(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+    imgcls_logits = pl_module.img_classifier(infer["cls_feats"])
+    imgcls_labels = batch["label"]
+    imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).long()
+    imgcls_loss = F.cross_entropy(imgcls_logits, imgcls_labels)
+
+    ret = {
+        "imgcls_loss": imgcls_loss,
+        "imgcls_logits": imgcls_logits,
+        "imgcls_labels": imgcls_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_imgcls_loss")(ret["imgcls_loss"])
+    acc = getattr(pl_module, f"{phase}_imgcls_accuracy")(
+        ret["imgcls_logits"], ret["imgcls_labels"]
+    )
+    pl_module.log(f"imgcls/{phase}/loss", loss)
+    pl_module.log(f"imgcls/{phase}/accuracy", acc)
+
+    return ret
+
+def compute_vqa(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+    vqa_logits = pl_module.vqa_classifier(infer["cls_feats"])
+    vqa_targets = torch.zeros(
+        len(vqa_logits), pl_module.hparams.config["vqav2_label_size"]
+    ).to(pl_module.device)
+
+    vqa_labels = batch["vqa_labels"]
+    vqa_scores = batch["vqa_scores"]
+
+    for i, (_label, _score) in enumerate(zip(vqa_labels, vqa_scores)):
+        for l, s in zip(_label, _score):
+            vqa_targets[i, l] = s
+
+    vqa_loss = (
+        F.binary_cross_entropy_with_logits(vqa_logits, vqa_targets)
+        * vqa_targets.shape[1]
+    )  # https://github.com/jnhwkim/ban-vqa/blob/master/train.py#L19
+
+    ret = {
+        "vqa_loss": vqa_loss,
+        "vqa_logits": vqa_logits,
+        "vqa_targets": vqa_targets,
+        "vqa_labels": vqa_labels,
+        "vqa_scores": vqa_scores,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    loss = getattr(pl_module, f"{phase}_vqa_loss")(ret["vqa_loss"])
+    score = getattr(pl_module, f"{phase}_vqa_score")(
+        ret["vqa_logits"], ret["vqa_targets"]
+    )
+    pl_module.log(f"vqa/{phase}/loss", loss)
+    pl_module.log(f"vqa/{phase}/score", score)
+
+    return ret
+
+
+def compute_nlvr2(pl_module, batch):
+    infer1 = pl_module.infer(
+        batch, mask_text=False, mask_image=False, image_token_type_idx=1
+    )
+    infer2 = pl_module.infer(
+        batch, mask_text=False, mask_image=False, image_token_type_idx=2
+    )
+
+    cls_feats = torch.cat([infer1["cls_feats"], infer2["cls_feats"]], dim=-1)
+    nlvr2_logits = pl_module.nlvr2_classifier(cls_feats)
+
+    nlvr2_labels = batch["answers"]
+    nlvr2_labels = torch.tensor(nlvr2_labels).to(pl_module.device).long()
+    nlvr2_loss = F.cross_entropy(nlvr2_logits, nlvr2_labels)
+
+    ret = {
+        "nlvr2_loss": nlvr2_loss,
+        "nlvr2_logits": nlvr2_logits,
+        "nlvr2_labels": nlvr2_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+
+    if phase == "train":
+        loss = getattr(pl_module, f"{phase}_nlvr2_loss")(ret["nlvr2_loss"])
+        acc = getattr(pl_module, f"{phase}_nlvr2_accuracy")(
+            ret["nlvr2_logits"], ret["nlvr2_labels"]
+        )
+        pl_module.log(f"nlvr2/{phase}/loss", loss)
+        pl_module.log(f"nlvr2/{phase}/accuracy", acc)
+    else:
+        dev_batches = [i for i, n in enumerate(batch["table_name"]) if "dev" in n]
+        test_batches = [i for i, n in enumerate(batch["table_name"]) if "test" in n]
+
+        if dev_batches:
+            dev_loss = getattr(pl_module, f"dev_nlvr2_loss")(
+                F.cross_entropy(
+                    ret["nlvr2_logits"][dev_batches], ret["nlvr2_labels"][dev_batches]
+                )
+            )
+            dev_acc = getattr(pl_module, f"dev_nlvr2_accuracy")(
+                ret["nlvr2_logits"][dev_batches], ret["nlvr2_labels"][dev_batches]
+            )
+            pl_module.log(f"nlvr2/dev/loss", dev_loss)
+            pl_module.log(f"nlvr2/dev/accuracy", dev_acc)
+        if test_batches:
+            test_loss = getattr(pl_module, f"test_nlvr2_loss")(
+                F.cross_entropy(
+                    ret["nlvr2_logits"][test_batches], ret["nlvr2_labels"][test_batches]
+                )
+            )
+            test_acc = getattr(pl_module, f"test_nlvr2_accuracy")(
+                ret["nlvr2_logits"][test_batches], ret["nlvr2_labels"][test_batches]
+            )
+            pl_module.log(f"nlvr2/test/loss", test_loss)
+            pl_module.log(f"nlvr2/test/accuracy", test_acc)
+
+    return ret
+
+
+def compute_irtr(pl_module, batch):
+    is_training_phase = pl_module.training
+
+    _bs, _c, _h, _w = batch["image"][0].shape
+    false_len = pl_module.hparams.config["draw_false_text"]
+    text_ids = torch.stack(
+        [batch[f"false_text_{i}_ids"] for i in range(false_len)], dim=1
+    )
+    text_masks = torch.stack(
+        [batch[f"false_text_{i}_masks"] for i in range(false_len)], dim=1
+    )
+    text_labels = torch.stack(
+        [batch[f"false_text_{i}_labels"] for i in range(false_len)], dim=1
+    )
+
+    text_ids = torch.cat([batch["text_ids"].unsqueeze(1), text_ids], dim=1)
+    text_masks = torch.cat([batch["text_masks"].unsqueeze(1), text_masks], dim=1)
+    text_labels = torch.cat([batch["text_labels"].unsqueeze(1), text_labels], dim=1)
+    images = batch["image"][0].unsqueeze(1).expand(_bs, false_len + 1, _c, _h, _w)
+
+    infer = pl_module.infer(
+        {
+            "image": [rearrange(images, "bs fs c h w -> (bs fs) c h w")],
+            "text_ids": rearrange(text_ids, "bs fs tl -> (bs fs) tl"),
+            "text_masks": rearrange(text_masks, "bs fs tl -> (bs fs) tl"),
+            "text_labels": rearrange(text_labels, "bs fs tl -> (bs fs) tl"),
+        }
+    )
+    score = pl_module.rank_output(infer["cls_feats"])[:, 0]
+    score = rearrange(score, "(bs fs) -> bs fs", bs=_bs, fs=false_len + 1)
+    answer = torch.zeros(_bs).to(score).long()
+    irtr_loss = F.cross_entropy(score, answer)
+
+    ret = {
+        "irtr_loss": irtr_loss,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    irtr_loss = getattr(pl_module, f"{phase}_irtr_loss")(ret["irtr_loss"])
+
+    pl_module.log(f"irtr/{phase}/irtr_loss", irtr_loss)
+
+    return ret
+
+
+@torch.no_grad()
+def compute_irtr_recall(pl_module):
+    text_dset = pl_module.trainer.datamodule.dms[0].make_no_false_val_dset()
+    text_dset.tokenizer = pl_module.trainer.datamodule.dms[0].tokenizer
+    text_loader = torch.utils.data.DataLoader(
+        text_dset,
+        batch_size=64,
+        num_workers=pl_module.hparams.config["num_workers"],
+        pin_memory=True,
+        collate_fn=functools.partial(
+            text_dset.collate,
+            mlm_collator=pl_module.trainer.datamodule.dms[0].mlm_collator,
+        ),
+    )
+
+    image_dset = pl_module.trainer.datamodule.dms[0].make_no_false_val_dset(
+        image_only=True
+    )
+    image_dset.tokenizer = pl_module.trainer.datamodule.dms[0].tokenizer
+    dist_sampler = DistributedSampler(image_dset, shuffle=False)
+    image_loader = torch.utils.data.DataLoader(
+        image_dset,
+        batch_size=1,
+        num_workers=pl_module.hparams.config["num_workers"],
+        sampler=dist_sampler,
+        pin_memory=True,
+        collate_fn=functools.partial(
+            image_dset.collate,
+            mlm_collator=pl_module.trainer.datamodule.dms[0].mlm_collator,
+        ),
+    )
+
+    text_preload = list()
+    for _b in tqdm.tqdm(text_loader, desc="text prefetch loop"):
+        text_preload.append(
+            {
+                "text_ids": _b["text_ids"].to(pl_module.device),
+                "text_masks": _b["text_masks"].to(pl_module.device),
+                "text_labels": _b["text_labels"].to(pl_module.device),
+                "img_index": _b["img_index"],
+            }
+        )
+
+    tiids = list()
+    for pre in text_preload:
+        tiids += pre["img_index"]
+    tiids = torch.tensor(tiids)
+
+    image_preload = list()
+    for _b in tqdm.tqdm(image_loader, desc="image prefetch loop"):
+        (ie, im, _, _) = pl_module.transformer.visual_embed(
+            _b["image"][0].to(pl_module.device),
+            max_image_len=pl_module.hparams.config["max_image_len"],
+            mask_it=False,
+        )
+        image_preload.append((ie, im, _b["img_index"][0]))
+
+    rank_scores = list()
+    rank_iids = list()
+
+    for img_batch in tqdm.tqdm(image_preload, desc="rank loop"):
+        _ie, _im, _iid = img_batch
+        _, l, c = _ie.shape
+
+        img_batch_score = list()
+        for txt_batch in text_preload:
+            fblen = len(txt_batch["text_ids"])
+            ie = _ie.expand(fblen, l, c)
+            im = _im.expand(fblen, l)
+
+            with torch.cuda.amp.autocast():
+                score = pl_module.rank_output(
+                    pl_module.infer(
+                        {
+                            "text_ids": txt_batch["text_ids"],
+                            "text_masks": txt_batch["text_masks"],
+                            "text_labels": txt_batch["text_labels"],
+                        },
+                        image_embeds=ie,
+                        image_masks=im,
+                    )["cls_feats"]
+                )[:, 0]
+
+            img_batch_score.append(score)
+
+        img_batch_score = torch.cat(img_batch_score)
+        rank_scores.append(img_batch_score.cpu().tolist())
+        rank_iids.append(_iid)
+
+    torch.distributed.barrier()
+    gather_rank_scores = all_gather(rank_scores)
+    gather_rank_iids = all_gather(rank_iids)
+
+    iids = torch.tensor(gather_rank_iids)
+    iids = iids.view(-1)
+    scores = torch.tensor(gather_rank_scores)
+    scores = scores.view(len(iids), -1)
+
+    topk10 = scores.topk(10, dim=1)
+    topk5 = scores.topk(5, dim=1)
+    topk1 = scores.topk(1, dim=1)
+    topk10_iids = tiids[topk10.indices]
+    topk5_iids = tiids[topk5.indices]
+    topk1_iids = tiids[topk1.indices]
+
+    tr_r10 = (iids.unsqueeze(1) == topk10_iids).float().max(dim=1)[0].mean()
+    tr_r5 = (iids.unsqueeze(1) == topk5_iids).float().max(dim=1)[0].mean()
+    tr_r1 = (iids.unsqueeze(1) == topk1_iids).float().max(dim=1)[0].mean()
+
+    topk10 = scores.topk(10, dim=0)
+    topk5 = scores.topk(5, dim=0)
+    topk1 = scores.topk(1, dim=0)
+    topk10_iids = iids[topk10.indices]
+    topk5_iids = iids[topk5.indices]
+    topk1_iids = iids[topk1.indices]
+
+    ir_r10 = (tiids.unsqueeze(0) == topk10_iids).float().max(dim=0)[0].mean()
+    ir_r5 = (tiids.unsqueeze(0) == topk5_iids).float().max(dim=0)[0].mean()
+    ir_r1 = (tiids.unsqueeze(0) == topk1_iids).float().max(dim=0)[0].mean()
+
+    return (ir_r1, ir_r5, ir_r10, tr_r1, tr_r5, tr_r10)
+
+
+def init_weights(module):
+    if isinstance(module, (nn.Linear, nn.Embedding)):
+        module.weight.data.normal_(mean=0.0, std=0.02)
+    elif isinstance(module, nn.LayerNorm):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
+
+    if isinstance(module, nn.Linear) and module.bias is not None:
+        module.bias.data.zero_()
+
+
+def vqa_test_step(pl_module, batch, output):
+    id2answer = (
+        pl_module.trainer.datamodule.dm_dicts["vqa_trainval"].id2answer
+        if "vqa_trainval" in pl_module.trainer.datamodule.dm_dicts
+        else pl_module.trainer.datamodule.dm_dicts["vqa"].id2answer
+    )
+    vqa_logits = output["vqa_logits"]
+    vqa_preds = vqa_logits.argmax(dim=-1)
+    vqa_preds = [id2answer[pred.item()] for pred in vqa_preds]
+    questions = batch["text"]
+    qids = batch["qid"]
+    return {"qids": qids, "preds": vqa_preds}
+
+
+def arc_test_step(pl_module, batch, output):
+    return output
+
+
+def vqa_test_wrapup(outs, model_name):
+    rank = torch.distributed.get_rank()
+    qids, preds = list(), list()
+    for out in outs:
+        qids += out["qids"]
+        preds += out["preds"]
+
+    rets = list()
+    for qid, pred in zip(qids, preds):
+        rets.append({"question_id": qid, "answer": pred})
+    with open(f"vqa_submit_{rank}.json", "w") as fp:
+        json.dump(rets, fp, indent=4)
+
+    torch.distributed.barrier()
+
+    if rank == 0:
+        jsons = list()
+        paths = list(glob.glob("vqa_submit_*.json"))
+        for path in paths:
+            with open(path, "r") as fp:
+                jsons += json.load(fp)
+        os.makedirs("result", exist_ok=True)
+        with open(f"result/vqa_submit_{model_name}.json", "w") as fp:
+            json.dump(jsons, fp, indent=4)
+
+    torch.distributed.barrier()
+    os.remove(f"vqa_submit_{rank}.json")
+
+
+def arc_test_wrapup(outs, caplen, model_name):
+    rank = torch.distributed.get_rank()
+    iids, captions = list(), list()
+    for out in outs:
+        iids += out["iid"]
+        captions += out["captions"]
+
+    rets = list()
+    for iid, caption in zip(iids, captions):
+        rets.append({"image_id": iid, "caption": caption})
+    with open(f"coco_cap_len{caplen}_{rank}.json", "w") as fp:
+        json.dump(rets, fp, indent=4)
+
+    torch.distributed.barrier()
+
+    if rank == 0:
+        jsons = list()
+        paths = list(glob.glob(f"coco_cap_len{caplen}_*.json"))
+        for path in paths:
+            with open(path, "r") as fp:
+                jsons += json.load(fp)
+        os.makedirs("result/arc", exist_ok=True)
+        jsons = sorted(jsons, key=lambda x: x["image_id"])
+        with open(f"result/arc/coco_cap_{model_name}_len{caplen}.json", "w") as fp:
+            json.dump(jsons, fp, indent=4)
+
+    torch.distributed.barrier()
+    os.remove(f"coco_cap_len{caplen}_{rank}.json")
+
+
+
+================================================
+FILE: clip/modules/simple_tokenizer.py
+================================================
+import gzip
+import html
+import os
+from functools import lru_cache
+
+import ftfy
+import regex as re
+
+
+@lru_cache()
+def default_bpe():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
+
+
+@lru_cache()
+def bytes_to_unicode():
+    """
+    Returns list of utf-8 byte and a corresponding list of unicode strings.
+    The reversible bpe codes work on unicode strings.
+    This means you need a large # of unicode characters in your vocab if you want to avoid UNKs.
+    When you're at something like a 10B token dataset you end up needing around 5K for decent coverage.
+    This is a signficant percentage of your normal, say, 32K bpe vocab.
+    To avoid that, we want lookup tables between utf-8 bytes and unicode strings.
+    And avoids mapping to whitespace/control characters the bpe code barfs on.
+    """
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8+n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
+
+def get_pairs(word):
+    """Return set of symbol pairs in a word.
+    Word is represented as tuple of symbols (symbols being variable-length strings).
+    """
+    pairs = set()
+    prev_char = word[0]
+    for char in word[1:]:
+        pairs.add((prev_char, char))
+        prev_char = char
+    return pairs
+
+
+def basic_clean(text):
+    text = ftfy.fix_text(text)
+    text = html.unescape(html.unescape(text))
+    return text.strip()
+
+
+def whitespace_clean(text):
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    return text
+
+
+class SimpleTokenizer(object):
+    def __init__(self, bpe_path: str = default_bpe()):
+        self.byte_encoder = bytes_to_unicode()
+        self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
+        merges = gzip.open(bpe_path).read().decode("utf-8").split('\n')
+        merges = merges[1:49152-256-2+1]
+        merges = [tuple(merge.split()) for merge in merges]
+        vocab = list(bytes_to_unicode().values())
+        vocab = vocab + [v+'</w>' for v in vocab]
+        for merge in merges:
+            vocab.append(''.join(merge))
+        vocab.extend(['<|startoftext|>', '<|endoftext|>'])
+        self.encoder = dict(zip(vocab, range(len(vocab))))
+        self.decoder = {v: k for k, v in self.encoder.items()}
+        self.bpe_ranks = dict(zip(merges, range(len(merges))))
+        self.cache = {'<|startoftext|>': '<|startoftext|>', '<|endoftext|>': '<|endoftext|>'}
+        self.pat = re.compile(r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""", re.IGNORECASE)
+
+    def bpe(self, token):
+        if token in self.cache:
+            return self.cache[token]
+        word = tuple(token[:-1]) + ( token[-1] + '</w>',)
+        pairs = get_pairs(word)
+
+        if not pairs:
+            return token+'</w>'
+
+        while True:
+            bigram = min(pairs, key = lambda pair: self.bpe_ranks.get(pair, float('inf')))
+            if bigram not in self.bpe_ranks:
+                break
+            first, second = bigram
+            new_word = []
+            i = 0
+            while i < len(word):
+                try:
+                    j = word.index(first, i)
+                    new_word.extend(word[i:j])
+                    i = j
+                except:
+                    new_word.extend(word[i:])
+                    break
+
+                if word[i] == first and i < len(word)-1 and word[i+1] == second:
+                    new_word.append(first+second)
+                    i += 2
+                else:
+                    new_word.append(word[i])
+                    i += 1
+            new_word = tuple(new_word)
+            word = new_word
+            if len(word) == 1:
+                break
+            else:
+                pairs = get_pairs(word)
+        word = ' '.join(word)
+        self.cache[token] = word
+        return word
+
+    def encode(self, text):
+        bpe_tokens = []
+        text = whitespace_clean(basic_clean(text)).lower()
+        for token in re.findall(self.pat, text):
+            token = ''.join(self.byte_encoder[b] for b in token.encode('utf-8'))
+            bpe_tokens.extend(self.encoder[bpe_token] for bpe_token in self.bpe(token).split(' '))
+        return bpe_tokens
+
+    def decode(self, tokens):
+        text = ''.join([self.decoder[token] for token in tokens])
+        text = bytearray([self.byte_decoder[c] for c in text]).decode('utf-8', errors="replace").replace('</w>', ' ')
+        return text
+
+
+================================================
+FILE: clip/modules/vision_transformer_prompts.py
+================================================
+""" Vision Transformer (ViT) in PyTorch
+
+A PyTorch implement of Vision Transformers as described in
+'An Image Is Worth 16 x 16 Words: Transformers for Image Recognition at Scale' - https://arxiv.org/abs/2010.11929
+
+The official jax code is released and available at https://github.com/google-research/vision_transformer
+
+Acknowledgments:
+* The paper authors for releasing code and weights, thanks!
+* I fixed my class token impl based on Phil Wang's https://github.com/lucidrains/vit-pytorch ... check it out
+for some einops/einsum fun
+* Simple transformer style inspired by Andrej Karpathy's https://github.com/karpathy/minGPT
+* Bert reference code checks against Huggingface Transformers and Tensorflow Bert
+
+DeiT model defs and weights from https://github.com/facebookresearch/deit,
+paper `DeiT: Data-efficient Image Transformers` - https://arxiv.org/abs/2012.12877
+
+Hacked together by / Copyright 2020 Ross Wightman
+"""
+import math
+import logging
+from functools import partial
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import hashlib
+import os
+import urllib
+import warnings
+
+from functools import partial
+from tqdm import tqdm
+
+from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from timm.models.helpers import load_pretrained
+from timm.models.layers import StdConv2dSame, DropPath, to_2tuple, trunc_normal_
+from timm.models.resnet import resnet26d, resnet50d
+from timm.models.resnetv2 import ResNetV2
+from timm.models.registry import register_model
+from torchvision import transforms
+
+_logger = logging.getLogger(__name__)
+
+from collections import OrderedDict
+from typing import Tuple, Union
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+
+from collections import OrderedDict
+from typing import Tuple, Union
+
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1):
+        super().__init__()
+
+        # all conv layers have stride 1. an avgpool is performed after the second convolution when stride > 1
+        self.conv1 = nn.Conv2d(inplanes, planes, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+
+        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.avgpool = nn.AvgPool2d(stride) if stride > 1 else nn.Identity()
+
+        self.conv3 = nn.Conv2d(planes, planes * self.expansion, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = None
+        self.stride = stride
+
+        if stride > 1 or inplanes != planes * Bottleneck.expansion:
+            # downsampling layer is prepended with an avgpool, and the subsequent convolution has stride 1
+            self.downsample = nn.Sequential(OrderedDict([
+                ("-1", nn.AvgPool2d(stride)),
+                ("0", nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
+                ("1", nn.BatchNorm2d(planes * self.expansion))
+            ]))
+
+    def forward(self, x: torch.Tensor):
+        identity = x
+
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.avgpool(out)
+        out = self.bn3(self.conv3(out))
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+        return out
+
+
+class AttentionPool2d(nn.Module):
+    def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
+        super().__init__()
+        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.c_proj = nn.Linear(embed_dim, output_dim or embed_dim)
+        self.num_heads = num_heads
+
+    def forward(self, x):
+        x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3]).permute(2, 0, 1)  # NCHW -> (HW)NC
+        x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
+        x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
+        x, _ = F.multi_head_attention_forward(
+            query=x, key=x, value=x,
+            embed_dim_to_check=x.shape[-1],
+            num_heads=self.num_heads,
+            q_proj_weight=self.q_proj.weight,
+            k_proj_weight=self.k_proj.weight,
+            v_proj_weight=self.v_proj.weight,
+            in_proj_weight=None,
+            in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
+            bias_k=None,
+            bias_v=None,
+            add_zero_attn=False,
+            dropout_p=0,
+            out_proj_weight=self.c_proj.weight,
+            out_proj_bias=self.c_proj.bias,
+            use_separate_proj_weight=True,
+            training=self.training,
+            need_weights=False
+        )
+
+        return x[0]
+
+
+class ModifiedResNet(nn.Module):
+    """
+    A ResNet class that is similar to torchvision's but contains the following changes:
+    - There are now 3 "stem" convolutions as opposed to 1, with an average pool instead of a max pool.
+    - Performs anti-aliasing strided convolutions, where an avgpool is prepended to convolutions with stride > 1
+    - The final pooling layer is a QKV attention instead of an average pool
+    """
+
+    def __init__(self, layers, output_dim, heads, input_resolution=224, width=64):
+        super().__init__()
+        self.output_dim = output_dim
+        self.input_resolution = input_resolution
+
+        # the 3-layer stem
+        self.conv1 = nn.Conv2d(3, width // 2, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(width // 2)
+        self.conv2 = nn.Conv2d(width // 2, width // 2, kernel_size=3, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(width // 2)
+        self.conv3 = nn.Conv2d(width // 2, width, kernel_size=3, padding=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(width)
+        self.avgpool = nn.AvgPool2d(2)
+        self.relu = nn.ReLU(inplace=True)
+
+        # residual layers
+        self._inplanes = width  # this is a *mutable* variable used during construction
+        self.layer1 = self._make_layer(width, layers[0])
+        self.layer2 = self._make_layer(width * 2, layers[1], stride=2)
+        self.layer3 = self._make_layer(width * 4, layers[2], stride=2)
+        self.layer4 = self._make_layer(width * 8, layers[3], stride=2)
+
+        embed_dim = width * 32  # the ResNet feature dimension
+        self.attnpool = AttentionPool2d(input_resolution // 32, embed_dim, heads, output_dim)
+
+    def _make_layer(self, planes, blocks, stride=1):
+        layers = [Bottleneck(self._inplanes, planes, stride)]
+
+        self._inplanes = planes * Bottleneck.expansion
+        for _ in range(1, blocks):
+            layers.append(Bottleneck(self._inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        def stem(x):
+            for conv, bn in [(self.conv1, self.bn1), (self.conv2, self.bn2), (self.conv3, self.bn3)]:
+                x = self.relu(bn(conv(x)))
+            x = self.avgpool(x)
+            return x
+
+        x = x.type(self.conv1.weight.dtype)
+        x = stem(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.attnpool(x)
+
+        return x
+
+
+class LayerNorm(nn.LayerNorm):
+    """Subclass torch's LayerNorm to handle fp16."""
+
+    def forward(self, x: torch.Tensor):
+        orig_type = x.dtype
+        ret = super().forward(x.type(torch.float32))
+        return ret.type(orig_type)
+
+
+class QuickGELU(nn.Module):
+    def forward(self, x: torch.Tensor):
+        return x * torch.sigmoid(1.702 * x)
+
+class ScaledDotProductAttention(nn.Module):
+    """ Scaled Dot-Product Attention """
+
+    def __init__(self, scale):
+        super().__init__()
+
+        self.scale = scale
+        self.softmax = nn.Softmax(dim=2)
+
+    def forward(self, q, k, v, mask=None):
+        #u = torch.bmm(q, k.transpose(1, 2)) # 1.Matmul
+        u = torch.einsum('lbd,kbd->blk', q, k) # 1.Matmul
+        u = u / self.scale # 2.Scale
+
+        if mask is not None:
+            u = u.masked_fill(mask, -np.inf) # 3.Mask
+
+        attn = self.softmax(u) # 4.Softmax
+        #output = torch.bmm(attn, v) # 5.Output
+        output = torch.einsum('blk,kbd->lbd', attn, v) # 5.Output
+
+        return output, attn 
+
+class ResidualAttentionBlock(nn.Module):
+    def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None, prompt_length=16,
+                 text_layer=False, i=0, prompt_depth=0):
+        super().__init__()
+
+        self.attn = nn.MultiheadAttention(d_model, n_head)
+        self.ln_1 = LayerNorm(d_model)
+        self.mlp = nn.Sequential(OrderedDict([
+            ("c_fc", nn.Linear(d_model, d_model * 4)),
+            ("gelu", QuickGELU()),
+            ("c_proj", nn.Linear(d_model * 4, d_model))
+        ]))
+        self.ln_2 = LayerNorm(d_model)
+        # For the first iteration i, we do not need to add the learnable parameters here
+        # as it will be added in the beginning, for both text and the vision branch
+        self.text_layer = text_layer
+        self.attn_mask = attn_mask
+        self.prompt_length_half = prompt_length//3
+        #self.attn_prompt = ScaledDotProductAttention(scale=np.power(d_model, 0.5))
+        if i ==0 and i<=prompt_depth:
+            self.attn_prompt = nn.MultiheadAttention(d_model, 1)
+            self.prompts_dynamic_complete = nn.init.normal_(torch.empty(self.prompt_length_half, 1, d_model, dtype=torch.float), std=0.02)
+            self.prompts_dynamic_image = nn.init.normal_(torch.empty(self.prompt_length_half, 1, d_model, dtype=torch.float), std=0.02)
+            self.prompts_dynamic_text = nn.init.normal_(torch.empty(self.prompt_length_half, 1, d_model, dtype=torch.float), std=0.02)
+        # This must be consistent with the config file prompt
+        if i == 0:
+            self.first_layer = True
+        else:
+            self.first_layer = False
+
+    def attention(self, x: torch.Tensor):
+        self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
+        return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
+
+    def forward(self, inputs):
+        # For the first layer, we do not need to add any duplicate, as it is already added
+        # as the shallow version
+        x = inputs[0]  # [length, batch, channel]
+        batch_size = x.shape[1]
+        compound_prompts_deeper = inputs[1]
+        counter = inputs[2]
+        missing_type = inputs[3]
+        if len(compound_prompts_deeper) > 0:
+            # This means that deeper compound prompts are turned on
+            # Here it behaves differently for text and visual side
+            # Forward function is same for both
+
+            # First check if the ith layer needs compound prompts or not
+            if counter == 0:
+                # First check if the ith layer needs compound prompts or not
+                if not (counter > len(compound_prompts_deeper) - 1):
+                    # Remove the outputs produced by learnable tokens of previous layer
+                    if not self.first_layer:
+                        visual_features = x[self.prompt_length_half*3:, :, :]
+                    else:
+                        visual_features = x
+                    #prompts_dynamic = self.attn_prompt(self.prompts_dynamic.repeat(1, batch_size, 1).to(x.get_device()), visual_features, visual_features, mask=None)[0]
+                    prompts_dynamic = []
+                    for i in range(len(missing_type)):
+                        if missing_type[i]==0:  # modality complete
+                            prompts_dynamic.append(self.prompts_dynamic_complete)
+                        elif missing_type[i]==1:  # missing text 
+                            prompts_dynamic.append(self.prompts_dynamic_image)
+                        elif missing_type[i]==2:  # missing image 
+                            prompts_dynamic.append(self.prompts_dynamic_text)
+                    prompts_dynamic = torch.cat(prompts_dynamic, 1)
+                    prompts_dynamic = self.attn_prompt(prompts_dynamic.to(x.get_device()), visual_features, visual_features, need_weights=False, attn_mask=None)[0]
+                    # Create/configure learnable tokens of this layer
+                    prompts_staged_and_common = compound_prompts_deeper[counter]  # extract the correct index
+                    prompts_staged_and_common = prompts_staged_and_common.permute(1, 0, 2)
+                    # Add the learnable tokens of this layer with the input, by replacing previous
+                    # layer learnable tokens
+                    x = torch.cat([prompts_staged_and_common, prompts_dynamic, visual_features], dim=0)
+
+                    # Once done, update the counter, so that the next time, it does not use same learnable tokens
+                    counter += 1
+            else:
+                # First check if the ith layer needs compound prompts or not
+                if not (counter > len(compound_prompts_deeper) - 1):
+                    # Remove the outputs produced by learnable tokens of previous layer
+                    if not self.first_layer:
+                        features = x[self.prompt_length_half*3:, :, :]
+                    else:
+                        features = x
+                    #prompts_dynamic = self.attn_prompt(self.prompts_dynamic.repeat(1, batch_size, 1).to(x.get_device()), texts_features, texts_features, mask=None)[0]
+                    prompts_dynamic_and_common = x[self.prompt_length_half:self.prompt_length_half*3, :, :]
+                    # Create/configure learnable tokens of this layer
+                    prompts = compound_prompts_deeper[counter]  # extract the correct index
+                    prompts = prompts.permute(1, 0, 2)
+                    # Add the learnable tokens of this layer with the input, by replacing previous
+                    # layer learnable tokens
+                    x = torch.cat([prompts, prompts_dynamic_and_common, features], dim=0)
+                    # Once done, update the counter, so that the next time, it does not use same learnable tokens
+                    counter += 1
+        x = x + self.attention(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+        return [x, compound_prompts_deeper, counter, None]  # return again as a list, so that nn.seq can work
+
+class Transformer(nn.Module):
+    def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None, prompts_needed=0,
+                 text_layer=False, prompt_length=None, prompt_depth=0):
+        super().__init__()
+        self.width = width
+        self.layers = layers
+        # Implements respective encoder blocks for a given design choice
+        self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask, prompt_length, text_layer, i, prompt_depth)
+                  for i in range(layers)])
+
+    def forward(self, x: torch.Tensor):
+        return self.resblocks(x)
+
+class VisionTransformer(nn.Module):
+    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int,
+                 prompt_length, prompt_depth):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.output_dim = output_dim
+        self.prompt_length = prompt_length
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
+        scale = width ** -0.5
+        self.class_embedding = nn.Parameter(scale * torch.randn(width))
+        self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+        self.ln_pre = LayerNorm(width)
+        # hyper-parameter if need to add prompt embeddings inside to the input
+        # of transformer block or not:
+        self.transformer = Transformer(width, layers, heads, prompt_length=prompt_length, prompt_depth=prompt_depth)
+
+        self.ln_post = LayerNorm(width)
+        self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+
+    def forward(self, x: torch.Tensor, all_prompts_image, missing_type):
+        x = self.conv1(x)  # shape = [*, width, grid, grid]
+        x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+        x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+        x = torch.cat(
+            [self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device),
+             x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = x + self.positional_embedding.to(x.dtype)
+
+        # After positional embeddings, we will attach prompts with the model, remember only those
+        # are trainable parameters here in whole image encoder.
+        # x = torch.cat([x, all_prompts_image[0]], dim=1)
+
+        # Normal code as before
+        x = self.ln_pre(x)
+
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        # Again combine the inputs, so nn.sequential can work
+        outputs = self.transformer([x, all_prompts_image, 0, missing_type])  # third argument is counter
+        x = outputs[0]
+        x = x.permute(1, 0, 2)  # LND -> NLD
+
+        x = self.ln_post(x[:, self.prompt_length, :])  # extract cls token
+
+        if self.proj is not None:
+            x = x @ self.proj
+
+        return x
+
+class CLIP(nn.Module):
+    def __init__(self,
+                 embed_dim: int,
+                 # vision
+                 image_resolution: int,
+                 vision_layers: Union[Tuple[int, int, int, int], int],
+                 vision_width: int,
+                 vision_patch_size: int,
+                 # text
+                 context_length: int,
+                 vocab_size: int,
+                 transformer_width: int,
+                 transformer_heads: int,
+                 transformer_layers: int,
+                 prompt_length, 
+                 prompt_depth, 
+                 ):
+        super().__init__()
+
+        self.context_length = context_length
+        self.prompt_length = prompt_length
+
+        if isinstance(vision_layers, (tuple, list)):
+            vision_heads = vision_width * 32 // 64
+            self.visual = ModifiedResNet(
+                layers=vision_layers,
+                output_dim=embed_dim,
+                heads=vision_heads,
+                input_resolution=image_resolution,
+                width=vision_width
+            )
+        else:
+            vision_heads = vision_width // 64
+            self.visual = VisionTransformer(
+                    input_resolution=image_resolution,
+                    patch_size=vision_patch_size,
+                    width=vision_width,
+                    layers=vision_layers,
+                    heads=vision_heads,
+                    output_dim=embed_dim,
+                    prompt_length=prompt_length,
+                    prompt_depth = prompt_depth,
+                )
+        # hyper-parameter if need to add prompt embeddings inside to the input
+        # of transformer block or not:
+        self.transformer = Transformer(
+            width=transformer_width,
+            layers=transformer_layers,
+            heads=transformer_heads,
+            attn_mask=self.build_attention_mask(),
+            text_layer=True,
+            prompt_length=prompt_length,
+            prompt_depth = prompt_depth,
+        )
+
+        self.vocab_size = vocab_size
+        self.token_embedding = nn.Embedding(vocab_size, transformer_width)
+        self.positional_embedding = nn.Parameter(torch.empty(self.context_length, transformer_width))
+        self.ln_final = LayerNorm(transformer_width)
+
+        self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+
+        self.initialize_parameters()
+
+    def initialize_parameters(self):
+        nn.init.normal_(self.token_embedding.weight, std=0.02)
+        nn.init.normal_(self.positional_embedding, std=0.01)
+
+        if isinstance(self.visual, ModifiedResNet):
+            if self.visual.attnpool is not None:
+                std = self.visual.attnpool.c_proj.in_features ** -0.5
+                nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
+                nn.init.normal_(self.visual.attnpool.k_proj.weight, std=std)
+                nn.init.normal_(self.visual.attnpool.v_proj.weight, std=std)
+                nn.init.normal_(self.visual.attnpool.c_proj.weight, std=std)
+
+            for resnet_block in [self.visual.layer1, self.visual.layer2, self.visual.layer3, self.visual.layer4]:
+                for name, param in resnet_block.named_parameters():
+                    if name.endswith("bn3.weight"):
+                        nn.init.zeros_(param)
+
+        proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
+        attn_std = self.transformer.width ** -0.5
+        fc_std = (2 * self.transformer.width) ** -0.5
+        for block in self.transformer.resblocks:
+            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
+            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
+            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
+            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+
+        if self.text_projection is not None:
+            nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+
+    def build_attention_mask(self):
+        # lazily create causal attention mask, with full attention between the vision tokens
+        # pytorch uses additive attention mask; fill with -inf
+        mask = torch.empty(self.context_length + self.prompt_length, self.context_length + self.prompt_length)
+        mask.fill_(float("-inf"))
+        mask.triu_(1)  # zero out the lower diagonal
+        return mask
+
+    @property
+    def dtype(self):
+        return self.visual.conv1.weight.dtype
+
+    def encode_image(self, image, missing_type=0):
+        return self.visual(image.type(self.dtype), missing_type.type(self.dtype))
+
+    def encode_text(self, text):
+        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+
+        return x
+
+    def forward(self, image, text):
+        image_features = self.encode_image(image)
+        text_features = self.encode_text(text)
+
+        # normalized features
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        # cosine similarity as logits
+        logit_scale = self.logit_scale.exp()
+        logits_per_image = logit_scale * image_features @ text_features.t()
+        logits_per_text = logit_scale * text_features @ image_features.t()
+
+        # shape = [global_batch_size, global_batch_size]
+        return logits_per_image, logits_per_text
+
+
+def convert_weights(model: nn.Module):
+    """Convert applicable model parameters to fp16"""
+
+    def _convert_weights_to_fp16(l):
+        if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
+            l.weight.data = l.weight.data.half()
+            if l.bias is not None:
+                l.bias.data = l.bias.data.half()
+
+        if isinstance(l, nn.MultiheadAttention):
+            for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
+                tensor = getattr(l, attr)
+                if tensor is not None:
+                    tensor.data = tensor.data.half()
+
+        for name in ["text_projection", "proj"]:
+            if hasattr(l, name):
+                attr = getattr(l, name)
+                if attr is not None:
+                    attr.data = attr.data.half()
+
+    model.apply(_convert_weights_to_fp16)
+
+
+def build_model(state_dict: dict, prompt_length, prompt_depth):
+    vit = "visual.proj" in state_dict
+
+    if vit:
+        vision_width = state_dict["visual.conv1.weight"].shape[0]
+        vision_layers = len(
+            [k for k in state_dict.keys() if k.startswith("visual.") and k.endswith(".attn.in_proj_weight")])
+        vision_patch_size = state_dict["visual.conv1.weight"].shape[-1]
+        grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
+        image_resolution = vision_patch_size * grid_size
+    else:
+        counts: list = [len(set(k.split(".")[2] for k in state_dict if k.startswith(f"visual.layer{b}"))) for b in
+                        [1, 2, 3, 4]]
+        vision_layers = tuple(counts)
+        vision_width = state_dict["visual.layer1.0.conv1.weight"].shape[0]
+        output_width = round((state_dict["visual.attnpool.positional_embedding"].shape[0] - 1) ** 0.5)
+        vision_patch_size = None
+        assert output_width ** 2 + 1 == state_dict["visual.attnpool.positional_embedding"].shape[0]
+        image_resolution = output_width * 32
+
+    embed_dim = state_dict["text_projection"].shape[1]
+    context_length = state_dict["positional_embedding"].shape[0]
+    vocab_size = state_dict["token_embedding.weight"].shape[0]
+    transformer_width = state_dict["ln_final.weight"].shape[0]
+    transformer_heads = transformer_width // 64
+    transformer_layers = len(set(k.split(".")[2] for k in state_dict if k.startswith(f"transformer.resblocks")))
+
+    model = CLIP(
+        embed_dim,
+        image_resolution, vision_layers, vision_width, vision_patch_size,
+        context_length, vocab_size, transformer_width, transformer_heads, transformer_layers, prompt_length, prompt_depth
+    )
+
+    for key in ["input_resolution", "context_length", "vocab_size"]:
+        if key in state_dict:
+            del state_dict[key]
+
+    #convert_weights(model)
+    try:
+        model.load_state_dict(state_dict)
+    except:
+        missing_keys, _ = model.load_state_dict(state_dict, strict=False)
+        #print('Weights not found for some missing keys: ', missing_keys)
+    return model
+
+
+================================================
+FILE: clip/transforms/__init__.py
+================================================
+from .pixelbert import (
+    pixelbert_transform,
+    pixelbert_transform_randaug,
+    CLIP_transform,
+)
+
+_transforms = {
+    "pixelbert": pixelbert_transform,
+    "pixelbert_randaug": pixelbert_transform_randaug,
+    "CLIP_transform" : CLIP_transform,
+}
+
+
+def keys_to_transforms(keys: list, size=224):
+    return [_transforms[key](size=size) for key in keys]
+
+
+
+================================================
+FILE: clip/transforms/pixelbert.py
+================================================
+from .utils import (
+    inception_normalize,
+    MinMaxResize,
+)
+from torchvision import transforms
+from .randaug import RandAugment
+from PIL import Image
+from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+    
+def CLIP_transform(size):
+    return Compose([
+        Resize(size, interpolation=BICUBIC),
+        CenterCrop(size),
+        _convert_image_to_rgb,
+        ToTensor(),
+        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    ])
+
+def pixelbert_transform(size=800):
+    longer = int((1333 / 800) * size)
+    return transforms.Compose(
+        [
+            MinMaxResize(shorter=size, longer=longer),
+            transforms.ToTensor(),
+            inception_normalize,
+        ]
+    )
+
+
+def pixelbert_transform_randaug(size=800):
+    longer = int((1333 / 800) * size)
+    trs = transforms.Compose(
+        [
+            MinMaxResize(shorter=size, longer=longer),
+            transforms.ToTensor(),
+            inception_normalize,
+        ]
+    )
+    trs.transforms.insert(0, RandAugment(2, 9))
+    return trs
+
+
+
+================================================
+FILE: clip/transforms/randaug.py
+================================================
+# code in this file is adpated from rpmcruz/autoaugment
+# https://github.com/rpmcruz/autoaugment/blob/master/transformations.py
+import random
+
+import PIL, PIL.ImageOps, PIL.ImageEnhance, PIL.ImageDraw
+import numpy as np
+import torch
+from PIL import Image
+
+
+def ShearX(img, v):  # [-0.3, 0.3]
+    assert -0.3 <= v <= 0.3
+    if random.random() > 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, v, 0, 0, 1, 0))
+
+
+def ShearY(img, v):  # [-0.3, 0.3]
+    assert -0.3 <= v <= 0.3
+    if random.random() > 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, v, 1, 0))
+
+
+def TranslateX(img, v):  # [-150, 150] => percentage: [-0.45, 0.45]
+    assert -0.45 <= v <= 0.45
+    if random.random() > 0.5:
+        v = -v
+    v = v * img.size[0]
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, v, 0, 1, 0))
+
+
+def TranslateXabs(img, v):  # [-150, 150] => percentage: [-0.45, 0.45]
+    assert 0 <= v
+    if random.random() > 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, v, 0, 1, 0))
+
+
+def TranslateY(img, v):  # [-150, 150] => percentage: [-0.45, 0.45]
+    assert -0.45 <= v <= 0.45
+    if random.random() > 0.5:
+        v = -v
+    v = v * img.size[1]
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, v))
+
+
+def TranslateYabs(img, v):  # [-150, 150] => percentage: [-0.45, 0.45]
+    assert 0 <= v
+    if random.random() > 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, v))
+
+
+def Rotate(img, v):  # [-30, 30]
+    assert -30 <= v <= 30
+    if random.random() > 0.5:
+        v = -v
+    return img.rotate(v)
+
+
+def AutoContrast(img, _):
+    return PIL.ImageOps.autocontrast(img)
+
+
+def Invert(img, _):
+    return PIL.ImageOps.invert(img)
+
+
+def Equalize(img, _):
+    return PIL.ImageOps.equalize(img)
+
+
+def Flip(img, _):  # not from the paper
+    return PIL.ImageOps.mirror(img)
+
+
+def Solarize(img, v):  # [0, 256]
+    assert 0 <= v <= 256
+    return PIL.ImageOps.solarize(img, v)
+
+
+def SolarizeAdd(img, addition=0, threshold=128):
+    img_np = np.array(img).astype(np.int)
+    img_np = img_np + addition
+    img_np = np.clip(img_np, 0, 255)
+    img_np = img_np.astype(np.uint8)
+    img = Image.fromarray(img_np)
+    return PIL.ImageOps.solarize(img, threshold)
+
+
+def Posterize(img, v):  # [4, 8]
+    v = int(v)
+    v = max(1, v)
+    return PIL.ImageOps.posterize(img, v)
+
+
+def Contrast(img, v):  # [0.1,1.9]
+    assert 0.1 <= v <= 1.9
+    return PIL.ImageEnhance.Contrast(img).enhance(v)
+
+
+def Color(img, v):  # [0.1,1.9]
+    assert 0.1 <= v <= 1.9
+    return PIL.ImageEnhance.Color(img).enhance(v)
+
+
+def Brightness(img, v):  # [0.1,1.9]
+    assert 0.1 <= v <= 1.9
+    return PIL.ImageEnhance.Brightness(img).enhance(v)
+
+
+def Sharpness(img, v):  # [0.1,1.9]
+    assert 0.1 <= v <= 1.9
+    return PIL.ImageEnhance.Sharpness(img).enhance(v)
+
+
+def Cutout(img, v):  # [0, 60] => percentage: [0, 0.2]
+    assert 0.0 <= v <= 0.2
+    if v <= 0.0:
+        return img
+
+    v = v * img.size[0]
+    return CutoutAbs(img, v)
+
+
+def CutoutAbs(img, v):  # [0, 60] => percentage: [0, 0.2]
+    # assert 0 <= v <= 20
+    if v < 0:
+        return img
+    w, h = img.size
+    x0 = np.random.uniform(w)
+    y0 = np.random.uniform(h)
+
+    x0 = int(max(0, x0 - v / 2.0))
+    y0 = int(max(0, y0 - v / 2.0))
+    x1 = min(w, x0 + v)
+    y1 = min(h, y0 + v)
+
+    xy = (x0, y0, x1, y1)
+    color = (125, 123, 114)
+    # color = (0, 0, 0)
+    img = img.copy()
+    PIL.ImageDraw.Draw(img).rectangle(xy, color)
+    return img
+
+
+def SamplePairing(imgs):  # [0, 0.4]
+    def f(img1, v):
+        i = np.random.choice(len(imgs))
+        img2 = PIL.Image.fromarray(imgs[i])
+        return PIL.Image.blend(img1, img2, v)
+
+    return f
+
+
+def Identity(img, v):
+    return img
+
+
+def augment_list():  # 16 oeprations and their ranges
+    # https://github.com/google-research/uda/blob/master/image/randaugment/policies.py#L57
+    # l = [
+    #     (Identity, 0., 1.0),
+    #     (ShearX, 0., 0.3),  # 0
+    #     (ShearY, 0., 0.3),  # 1
+    #     (TranslateX, 0., 0.33),  # 2
+    #     (TranslateY, 0., 0.33),  # 3
+    #     (Rotate, 0, 30),  # 4
+    #     (AutoContrast, 0, 1),  # 5
+    #     (Invert, 0, 1),  # 6
+    #     (Equalize, 0, 1),  # 7
+    #     (Solarize, 0, 110),  # 8
+    #     (Posterize, 4, 8),  # 9
+    #     # (Contrast, 0.1, 1.9),  # 10
+    #     (Color, 0.1, 1.9),  # 11
+    #     (Brightness, 0.1, 1.9),  # 12
+    #     (Sharpness, 0.1, 1.9),  # 13
+    #     # (Cutout, 0, 0.2),  # 14
+    #     # (SamplePairing(imgs), 0, 0.4),  # 15
+    # ]
+
+    # https://github.com/tensorflow/tpu/blob/8462d083dd89489a79e3200bcc8d4063bf362186/models/official/efficientnet/autoaugment.py#L505
+    l = [
+        (AutoContrast, 0, 1),
+        (Equalize, 0, 1),
+        # (Invert, 0, 1),
+        (Rotate, 0, 30),
+        (Posterize, 0, 4),
+        (Solarize, 0, 256),
+        (SolarizeAdd, 0, 110),
+        (Color, 0.1, 1.9),
+        (Contrast, 0.1, 1.9),
+        (Brightness, 0.1, 1.9),
+        (Sharpness, 0.1, 1.9),
+        (ShearX, 0.0, 0.3),
+        (ShearY, 0.0, 0.3),
+        # (CutoutAbs, 0, 40),
+        (TranslateXabs, 0.0, 100),
+        (TranslateYabs, 0.0, 100),
+    ]
+
+    return l
+
+
+class Lighting(object):
+    """Lighting noise(AlexNet - style PCA - based noise)"""
+
+    def __init__(self, alphastd, eigval, eigvec):
+        self.alphastd = alphastd
+        self.eigval = torch.Tensor(eigval)
+        self.eigvec = torch.Tensor(eigvec)
+
+    def __call__(self, img):
+        if self.alphastd == 0:
+            return img
+
+        alpha = img.new().resize_(3).normal_(0, self.alphastd)
+        rgb = (
+            self.eigvec.type_as(img)
+            .clone()
+            .mul(alpha.view(1, 3).expand(3, 3))
+            .mul(self.eigval.view(1, 3).expand(3, 3))
+            .sum(1)
+            .squeeze()
+        )
+
+        return img.add(rgb.view(3, 1, 1).expand_as(img))
+
+
+class CutoutDefault(object):
+    """
+    Reference : https://github.com/quark0/darts/blob/master/cnn/utils.py
+    """
+
+    def __init__(self, length):
+        self.length = length
+
+    def __call__(self, img):
+        h, w = img.size(1), img.size(2)
+        mask = np.ones((h, w), np.float32)
+        y = np.random.randint(h)
+        x = np.random.randint(w)
+
+        y1 = np.clip(y - self.length // 2, 0, h)
+        y2 = np.clip(y + self.length // 2, 0, h)
+        x1 = np.clip(x - self.length // 2, 0, w)
+        x2 = np.clip(x + self.length // 2, 0, w)
+
+        mask[y1:y2, x1:x2] = 0.0
+        mask = torch.from_numpy(mask)
+        mask = mask.expand_as(img)
+        img *= mask
+        return img
+
+
+class RandAugment:
+    def __init__(self, n, m):
+        self.n = n
+        self.m = m  # [0, 30]
+        self.augment_list = augment_list()
+
+    def __call__(self, img):
+        ops = random.choices(self.augment_list, k=self.n)
+        for op, minval, maxval in ops:
+            val = (float(self.m) / 30) * float(maxval - minval) + minval
+            img = op(img, val)
+
+        return img
+
+
+
+================================================
+FILE: clip/transforms/utils.py
+================================================
+from torchvision import transforms
+from PIL import Image
+
+
+class MinMaxResize:
+    def __init__(self, shorter=800, longer=1333):
+        self.min = shorter
+        self.max = longer
+
+    def __call__(self, x):
+        w, h = x.size
+        scale = self.min / min(w, h)
+        if h < w:
+            newh, neww = self.min, scale * w
+        else:
+            newh, neww = scale * h, self.min
+
+        if max(newh, neww) > self.max:
+            scale = self.max / max(newh, neww)
+            newh = newh * scale
+            neww = neww * scale
+
+        newh, neww = int(newh + 0.5), int(neww + 0.5)
+        newh, neww = newh // 32 * 32, neww // 32 * 32
+
+        return x.resize((neww, newh), resample=Image.BICUBIC)
+
+
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        """
+        Args:
+            tensor (Tensor): Tensor image of size (C, H, W) to be normalized.
+        Returns:
+            Tensor: Normalized image.
+        """
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+            # The normalize code -> t.sub_(m).div_(s)
+        return tensor
+
+
+# This is simple maximum entropy normalization performed in Inception paper
+inception_normalize = transforms.Compose(
+    [transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
+)
+
+# ViT uses simple non-biased inception normalization
+# https://github.com/google-research/vision_transformer/blob/master/vit_jax/input_pipeline.py#L132
+inception_unnormalize = transforms.Compose(
+    [UnNormalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])]
+)
+
+
+
+================================================
+FILE: clip/utils/glossary.py
+================================================
+import re
+
+contractions = {
+    "aint": "ain't",
+    "arent": "aren't",
+    "cant": "can't",
+    "couldve": "could've",
+    "couldnt": "couldn't",
+    "couldn'tve": "couldn't've",
+    "couldnt've": "couldn't've",
+    "didnt": "didn't",
+    "doesnt": "doesn't",
+    "dont": "don't",
+    "hadnt": "hadn't",
+    "hadnt've": "hadn't've",
+    "hadn'tve": "hadn't've",
+    "hasnt": "hasn't",
+    "havent": "haven't",
+    "hed": "he'd",
+    "hed've": "he'd've",
+    "he'dve": "he'd've",
+    "hes": "he's",
+    "howd": "how'd",
+    "howll": "how'll",
+    "hows": "how's",
+    "Id've": "I'd've",
+    "I'dve": "I'd've",
+    "Im": "I'm",
+    "Ive": "I've",
+    "isnt": "isn't",
+    "itd": "it'd",
+    "itd've": "it'd've",
+    "it'dve": "it'd've",
+    "itll": "it'll",
+    "let's": "let's",
+    "maam": "ma'am",
+    "mightnt": "mightn't",
+    "mightnt've": "mightn't've",
+    "mightn'tve": "mightn't've",
+    "mightve": "might've",
+    "mustnt": "mustn't",
+    "mustve": "must've",
+    "neednt": "needn't",
+    "notve": "not've",
+    "oclock": "o'clock",
+    "oughtnt": "oughtn't",
+    "ow's'at": "'ow's'at",
+    "'ows'at": "'ow's'at",
+    "'ow'sat": "'ow's'at",
+    "shant": "shan't",
+    "shed've": "she'd've",
+    "she'dve": "she'd've",
+    "she's": "she's",
+    "shouldve": "should've",
+    "shouldnt": "shouldn't",
+    "shouldnt've": "shouldn't've",
+    "shouldn'tve": "shouldn't've",
+    "somebody'd": "somebodyd",
+    "somebodyd've": "somebody'd've",
+    "somebody'dve": "somebody'd've",
+    "somebodyll": "somebody'll",
+    "somebodys": "somebody's",
+    "someoned": "someone'd",
+    "someoned've": "someone'd've",
+    "someone'dve": "someone'd've",
+    "someonell": "someone'll",
+    "someones": "someone's",
+    "somethingd": "something'd",
+    "somethingd've": "something'd've",
+    "something'dve": "something'd've",
+    "somethingll": "something'll",
+    "thats": "that's",
+    "thered": "there'd",
+    "thered've": "there'd've",
+    "there'dve": "there'd've",
+    "therere": "there're",
+    "theres": "there's",
+    "theyd": "they'd",
+    "theyd've": "they'd've",
+    "they'dve": "they'd've",
+    "theyll": "they'll",
+    "theyre": "they're",
+    "theyve": "they've",
+    "twas": "'twas",
+    "wasnt": "wasn't",
+    "wed've": "we'd've",
+    "we'dve": "we'd've",
+    "weve": "we've",
+    "werent": "weren't",
+    "whatll": "what'll",
+    "whatre": "what're",
+    "whats": "what's",
+    "whatve": "what've",
+    "whens": "when's",
+    "whered": "where'd",
+    "wheres": "where's",
+    "whereve": "where've",
+    "whod": "who'd",
+    "whod've": "who'd've",
+    "who'dve": "who'd've",
+    "wholl": "who'll",
+    "whos": "who's",
+    "whove": "who've",
+    "whyll": "why'll",
+    "whyre": "why're",
+    "whys": "why's",
+    "wont": "won't",
+    "wouldve": "would've",
+    "wouldnt": "wouldn't",
+    "wouldnt've": "wouldn't've",
+    "wouldn'tve": "wouldn't've",
+    "yall": "y'all",
+    "yall'll": "y'all'll",
+    "y'allll": "y'all'll",
+    "yall'd've": "y'all'd've",
+    "y'alld've": "y'all'd've",
+    "y'all'dve": "y'all'd've",
+    "youd": "you'd",
+    "youd've": "you'd've",
+    "you'dve": "you'd've",
+    "youll": "you'll",
+    "youre": "you're",
+    "youve": "you've",
+}
+
+manual_map = {
+    "none": "0",
+    "zero": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+}
+articles = ["a", "an", "the"]
+period_strip = re.compile("(?!<=\d)(\.)(?!\d)")
+comma_strip = re.compile("(\d)(\,)(\d)")
+punct = [
+    ";",
+    r"/",
+    "[",
+    "]",
+    '"',
+    "{",
+    "}",
+    "(",
+    ")",
+    "=",
+    "+",
+    "\\",
+    "_",
+    "-",
+    ">",
+    "<",
+    "@",
+    "`",
+    ",",
+    "?",
+    "!",
+]
+
+
+def normalize_word(token):
+    _token = token
+    for p in punct:
+        if (p + " " in token or " " + p in token) or (
+            re.search(comma_strip, token) != None
+        ):
+            _token = _token.replace(p, "")
+        else:
+            _token = _token.replace(p, " ")
+    token = period_strip.sub("", _token, re.UNICODE)
+
+    _token = []
+    temp = token.lower().split()
+    for word in temp:
+        word = manual_map.setdefault(word, word)
+        if word not in articles:
+            _token.append(word)
+    for i, word in enumerate(_token):
+        if word in contractions:
+            _token[i] = contractions[word]
+    token = " ".join(_token)
+    token = token.replace(",", "")
+    return token
+
+
+
+================================================
+FILE: clip/utils/write_food101.py
+================================================
+import json
+import pandas as pd
+import pyarrow as pa
+import random
+import os
+
+from tqdm import tqdm
+from glob import glob
+from collections import defaultdict, Counter
+from .glossary import normalize_word
+
+def make_arrow(root, dataset_root, single_plot=False, missing_type=None):
+    image_root = os.path.join(root, 'images')
+    
+    with open(f"{root}/class_idx.json", "r") as fp:
+        FOOD_CLASS_DICT = json.load(fp)
+        
+    with open(f"{root}/text.json", "r") as fp:
+        text_dir = json.load(fp)
+        
+    with open(f"{root}/split.json", "r") as fp:
+        split_sets = json.load(fp)
+        
+    
+    for split, samples in split_sets.items():
+        split_type = 'train' if split != 'test' else 'test'
+        data_list = []
+        for sample in tqdm(samples):
+            if sample not in text_dir:
+                print("ignore no text data: ", sample)
+                continue
+            cls = sample[:sample.rindex('_')]
+            label = FOOD_CLASS_DICT[cls]
+            image_path = os.path.join(image_root, split_type, cls, sample)
+
+            with open(image_path, "rb") as fp:
+                binary = fp.read()
+                
+            text = [text_dir[sample]]
+            
+            
+            data = (binary, text, label, sample, split)
+            data_list.append(data)
+
+        dataframe = pd.DataFrame(
+            data_list,
+            columns=[
+                "image",
+                "text",
+                "label",
+                "image_id",
+                "split",
+            ],
+        )
+
+        table = pa.Table.from_pandas(dataframe)
+
+        os.makedirs(dataset_root, exist_ok=True)
+        with pa.OSFile(f"{dataset_root}/food101_{split}.arrow", "wb") as sink:
+            with pa.RecordBatchFileWriter(sink, table.schema) as writer:
+                writer.write_table(table)        
+
+
+================================================
+FILE: clip/utils/write_hatememes.py
+================================================
+import json, jsonlines
+import pandas as pd
+import pyarrow as pa
+import random
+import os
+
+from tqdm import tqdm
+from glob import glob
+from collections import defaultdict, Counter
+from .glossary import normalize_word
+
+def make_arrow(root, dataset_root, single_plot=False):
+    split_sets = ['train', 'dev', 'test']
+    
+    for split in split_sets:
+        data_list = []
+        with jsonlines.open(os.path.join(root,f'data/{split}.jsonl'), 'r') as rfd:
+            for data in tqdm(rfd):
+                image_path = os.path.join(root, 'data', data['img'])
+                
+                with open(image_path, "rb") as fp:
+                    binary = fp.read()       
+                    
+                text = [data['text']]
+                label = data['label']
+                #text_aug = text_aug_dir['{}.png'.format(data['id'])]
+
+                data = (binary, text, label, split)
+                data_list.append(data)                
+                            
+
+        dataframe = pd.DataFrame(
+            data_list,
+            columns=[
+                "image",
+                "text",
+                "label",
+                "split",
+            ],
+        )
+
+        table = pa.Table.from_pandas(dataframe)
+
+        os.makedirs(dataset_root, exist_ok=True)
+        with pa.OSFile(f"{dataset_root}/hatememes_{split}.arrow", "wb") as sink:
+            with pa.RecordBatchFileWriter(sink, table.schema) as writer:
+                writer.write_table(table)        
+
+
+================================================
+FILE: clip/utils/write_mmimdb.py
+================================================
+import json
+import pandas as pd
+import pyarrow as pa
+import random
+import os
+
+from tqdm import tqdm
+from glob import glob
+from collections import defaultdict, Counter
+from .glossary import normalize_word
+
+def make_arrow(root, dataset_root, single_plot=False, missing_type=None):
+    GENRE_CLASS = ['Drama', 'Comedy', 'Romance', 'Thriller', 'Crime', 'Action', 'Adventure', 'Horror'
+     , 'Documentary', 'Mystery', 'Sci-Fi', 'Fantasy', 'Family', 'Biography', 'War', 'History', 'Music',
+     'Animation', 'Musical', 'Western', 'Sport', 'Short', 'Film-Noir']
+    GENRE_CLASS_DICT = {}
+    for idx, genre in enumerate(GENRE_CLASS):
+        GENRE_CLASS_DICT[genre] = idx    
+
+    image_root = os.path.join(root, 'images')
+    label_root = os.path.join(root, 'labels')
+    
+    with open(f"{root}/split.json", "r") as fp:
+        split_sets = json.load(fp)
+        
+    
+    total_genres = []
+    for split, samples in split_sets.items():
+        data_list = []
+        for sample in tqdm(samples):
+            image_path = os.path.join(image_root, sample+'.jpeg')
+            label_path = os.path.join(label_root, sample+'.json')
+            with open(image_path, "rb") as fp:
+                binary = fp.read()
+            with open(label_path, "r") as fp:
+                labels = json.load(fp)    
+            
+            # There could be more than one plot for a movie,
+            # if single plot, only the first plots are used
+            if single_plot:
+                plots = [labels['plot'][0]]
+            else:
+                plots = labels['plot']
+                
+            genres = labels['genres']
+            label = [1 if g in genres else 0 for g in GENRE_CLASS_DICT]
+            data = (binary, plots, label, genres, sample, split)
+            data_list.append(data)
+
+        dataframe = pd.DataFrame(
+            data_list,
+            columns=[
+                "image",
+                "plots",
+                "label",
+                "genres",
+                "image_id",
+                "split",
+            ],
+        )
+
+        table = pa.Table.from_pandas(dataframe)
+
+        os.makedirs(dataset_root, exist_ok=True)
+        with pa.OSFile(f"{dataset_root}/mmimdb_{split}.arrow", "wb") as sink:
+            with pa.RecordBatchFileWriter(sink, table.schema) as writer:
+                writer.write_table(table)        
+
+
+================================================
+FILE: datasets/Food101/class_idx.json
+================================================
+{"frozen_yogurt": 0, "tacos": 1, "gnocchi": 2, "ramen": 3, "sushi": 4, "spaghetti_carbonara": 5, "foie_gras": 6, "club_sandwich": 7, "chicken_curry": 8, "caprese_salad": 9, "guacamole": 10, "fish_and_chips": 11, "seaweed_salad": 12, "samosa": 13, "shrimp_and_grits": 14, "prime_rib": 15, "cheese_plate": 16, "grilled_cheese_sandwich": 17, "omelette": 18, "macarons": 19, "pancakes": 20, "paella": 21, "crab_cakes": 22, "onion_rings": 23, "poutine": 24, "panna_cotta": 25, "hamburger": 26, "eggs_benedict": 27, "pizza": 28, "cup_cakes": 29, "red_velvet_cake": 30, "huevos_rancheros": 31, "french_toast": 32, "pad_thai": 33, "beef_tartare": 34, "beet_salad": 35, "garlic_bread": 36, "escargots": 37, "cheesecake": 38, "tuna_tartare": 39, "french_fries": 40, "pulled_pork_sandwich": 41, "ravioli": 42, "clam_chowder": 43, "baby_back_ribs": 44, "pork_chop": 45, "chicken_quesadilla": 46, "grilled_salmon": 47, "dumplings": 48, "fried_rice": 49, "macaroni_and_cheese": 50, "hot_and_sour_soup": 51, "tiramisu": 52, "lobster_roll_sandwich": 53, "filet_mignon": 54, "lobster_bisque": 55, "risotto": 56, "takoyaki": 57, "waffles": 58, "miso_soup": 59, "scallops": 60, "hummus": 61, "french_onion_soup": 62, "spaghetti_bolognese": 63, "gyoza": 64, "sashimi": 65, "caesar_salad": 66, "donuts": 67, "pho": 68, "creme_brulee": 69, "edamame": 70, "apple_pie": 71, "carrot_cake": 72, "croque_madame": 73, "chocolate_cake": 74, "mussels": 75, "chocolate_mousse": 76, "deviled_eggs": 77, "ice_cream": 78, "chicken_wings": 79, "steak": 80, "churros": 81, "beignets": 82, "breakfast_burrito": 83, "spring_rolls": 84, "lasagna": 85, "cannoli": 86, "nachos": 87, "bruschetta": 88, "hot_dog": 89, "greek_salad": 90, "beef_carpaccio": 91, "falafel": 92, "strawberry_shortcake": 93, "bread_pudding": 94, "ceviche": 95, "peking_duck": 96, "bibimbap": 97, "oysters": 98, "fried_calamari": 99, "baklava": 100}
+
